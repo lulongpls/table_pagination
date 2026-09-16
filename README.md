@@ -1,6 +1,6 @@
 # table_pagination
 
-Reusable Flutter data grid built on Syncfusion DataGrid and Cubit state.
+Reusable Flutter data grid built on `flutter_advanced_table` and Cubit state.
 
 ## Features
 
@@ -8,6 +8,7 @@ Reusable Flutter data grid built on Syncfusion DataGrid and Cubit state.
 - Server-side sorting through custom sortable headers.
 - Filter, refresh, reload, page-size, and page navigation methods on the cubit.
 - Custom columns, custom cell widgets, and per-column header/cell padding.
+- Custom row wrappers and row decorations for card-like rows.
 - Loading, empty, error, load-more, and pagination footer states.
 
 ## Usage
@@ -58,6 +59,19 @@ GenericTable<User>(
       ),
     ),
   ],
+  rowDecoration: BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(8),
+    border: Border.all(color: const Color(0xFFE1E6E3)),
+    boxShadow: const [
+      BoxShadow(
+        color: Color(0x14000000),
+        blurRadius: 4,
+        offset: Offset(0, 1),
+      ),
+    ],
+  ),
+  elementsPadding: const EdgeInsets.symmetric(vertical: 6),
 )
 ```
 

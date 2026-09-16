@@ -1,5 +1,6 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_datagrid/datagrid.dart';
 import 'package:table_pagination/src/cubit/generic_table_state.dart';
 import 'package:table_pagination/src/widgets/sortable_header.dart';
 
@@ -12,12 +13,31 @@ typedef TableColumnHeaderBuilder<T> =
       ValueChanged<String> onSort,
     );
 
-/// Declarative config for one [SfDataGrid] column.
+typedef TableRowBuilder<T> =
+    Widget Function(
+      BuildContext context,
+      T item,
+      int rowIndex,
+      Widget row,
+      bool isHovered,
+    );
+
+typedef TableRowDecorationBuilder<T> =
+    BoxDecoration? Function(
+      BuildContext context,
+      T item,
+      int rowIndex,
+      bool isHovered,
+    );
+
+typedef TableRowTap<T> = void Function(T item, int rowIndex);
+
+/// Declarative config for one table column.
 ///
-/// Use [valueGetter] for plain text/value cells, or [cellBuilder] when the
-/// column needs a fully custom widget such as a chip, badge, avatar, or action
-/// buttons. [cellPadding] and [headerPadding] are per-column, so you can add
-/// different padding to two specific columns without changing the whole table.
+/// Use [valueGetter] for plain value cells, or [cellBuilder] when the column
+/// needs a fully custom widget such as an avatar row, chip, switch, or action
+/// buttons. [cellPadding] and [headerPadding] are per-column, so a screen can
+/// tune the spacing of only the first two columns without affecting the rest.
 class TableColumnConfig<T> {
   const TableColumnConfig({
     required this.name,
@@ -30,15 +50,13 @@ class TableColumnConfig<T> {
     this.width = double.nan,
     this.minimumWidth = double.nan,
     this.maximumWidth = double.nan,
-    this.columnWidthMode = ColumnWidthMode.none,
-    this.autoFitPadding = const EdgeInsets.all(16),
     this.headerAlignment = Alignment.centerLeft,
     this.cellAlignment = Alignment.centerLeft,
     this.headerPadding = const EdgeInsets.symmetric(horizontal: 8),
     this.cellPadding = const EdgeInsets.symmetric(horizontal: 8),
   });
 
-  /// Column identifier used by Syncfusion and by row cells.
+  /// Column identifier used by row cells and sort/filter code.
   final String name;
 
   /// Default visible header text.
@@ -64,8 +82,6 @@ class TableColumnConfig<T> {
   final double width;
   final double minimumWidth;
   final double maximumWidth;
-  final ColumnWidthMode columnWidthMode;
-  final EdgeInsets autoFitPadding;
   final AlignmentGeometry headerAlignment;
   final AlignmentGeometry cellAlignment;
   final EdgeInsetsGeometry headerPadding;
@@ -73,20 +89,17 @@ class TableColumnConfig<T> {
 
   String get effectiveSortField => sortField ?? name;
 
-  GridColumn toGridColumn({
+  Widget buildHeader({
     required BuildContext context,
     required GenericTableState<T> state,
     required ValueChanged<String> onSort,
+    required double defaultWidth,
+    double height = double.nan,
   }) {
-    return GridColumn(
-      columnName: name,
-      width: width,
-      minimumWidth: minimumWidth,
-      maximumWidth: maximumWidth,
-      columnWidthMode: columnWidthMode,
-      autoFitPadding: autoFitPadding,
-      allowSorting: false,
-      label: Container(
+    return SizedBox(
+      width: resolveWidth(defaultWidth),
+      height: height.isNaN ? null : height,
+      child: Container(
         alignment: headerAlignment,
         padding: headerPadding,
         child:
@@ -101,5 +114,41 @@ class TableColumnConfig<T> {
             ),
       ),
     );
+  }
+
+  Widget buildCell({
+    required T item,
+    required int rowIndex,
+    required double defaultWidth,
+    double height = double.nan,
+  }) {
+    final value = cellBuilder?.call(item, rowIndex) ?? valueGetter?.call(item);
+    final content = value is Widget
+        ? value
+        : Text(value?.toString() ?? '', overflow: TextOverflow.ellipsis);
+
+    return SizedBox(
+      width: resolveWidth(defaultWidth),
+      height: height.isNaN ? null : height,
+      child: Container(
+        alignment: cellAlignment,
+        padding: cellPadding,
+        child: content,
+      ),
+    );
+  }
+
+  double resolveWidth(double defaultWidth) {
+    var resolved = width.isNaN ? defaultWidth : width;
+
+    if (!minimumWidth.isNaN) {
+      resolved = math.max(minimumWidth, resolved);
+    }
+
+    if (!maximumWidth.isNaN) {
+      resolved = math.min(maximumWidth, resolved);
+    }
+
+    return resolved;
   }
 }

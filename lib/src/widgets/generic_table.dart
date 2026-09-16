@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_advanced_table/flutter_advanced_table.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syncfusion_flutter_datagrid/datagrid.dart';
 import 'package:table_pagination/src/core/table_mode.dart';
 import 'package:table_pagination/src/cubit/generic_table_cubit.dart';
 import 'package:table_pagination/src/cubit/generic_table_state.dart';
@@ -33,23 +33,26 @@ class GenericTable<T> extends StatefulWidget {
     this.initialAscending = true,
     this.autoFetchOnCreate = true,
     this.rowBuilder,
+    this.rowDecorationBuilder,
+    this.onRowTap,
     this.loadingBuilder,
     this.emptyBuilder,
     this.errorBuilder,
     this.footerBuilder,
     this.loadMoreIndicatorBuilder,
-    this.columnWidthMode = ColumnWidthMode.fill,
-    this.gridLinesVisibility = GridLinesVisibility.horizontal,
-    this.headerGridLinesVisibility = GridLinesVisibility.horizontal,
+    this.headerDecoration,
+    this.rowDecoration,
+    this.elementsPadding,
+    this.innerHeaderPadding,
+    this.innerRowElementsPadding,
+    this.outterHeaderPadding,
+    this.outterRowsPadding,
+    this.headerTextStyle,
+    this.addSpacerToActions = true,
     this.rowHeight = double.nan,
     this.headerRowHeight = double.nan,
     this.defaultColumnWidth = double.nan,
-    this.selectionMode = SelectionMode.none,
-    this.controller,
-    this.onCellTap,
-    this.onCellDoubleTap,
     this.shrinkWrapRows = false,
-    this.shrinkWrapColumns = false,
     this.showHorizontalScrollbar = true,
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
@@ -60,23 +63,26 @@ class GenericTable<T> extends StatefulWidget {
     required this.cubit,
     required this.columns,
     this.rowBuilder,
+    this.rowDecorationBuilder,
+    this.onRowTap,
     this.loadingBuilder,
     this.emptyBuilder,
     this.errorBuilder,
     this.footerBuilder,
     this.loadMoreIndicatorBuilder,
-    this.columnWidthMode = ColumnWidthMode.fill,
-    this.gridLinesVisibility = GridLinesVisibility.horizontal,
-    this.headerGridLinesVisibility = GridLinesVisibility.horizontal,
+    this.headerDecoration,
+    this.rowDecoration,
+    this.elementsPadding,
+    this.innerHeaderPadding,
+    this.innerRowElementsPadding,
+    this.outterHeaderPadding,
+    this.outterRowsPadding,
+    this.headerTextStyle,
+    this.addSpacerToActions = true,
     this.rowHeight = double.nan,
     this.headerRowHeight = double.nan,
     this.defaultColumnWidth = double.nan,
-    this.selectionMode = SelectionMode.none,
-    this.controller,
-    this.onCellTap,
-    this.onCellDoubleTap,
     this.shrinkWrapRows = false,
-    this.shrinkWrapColumns = false,
     this.showHorizontalScrollbar = true,
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
@@ -98,23 +104,26 @@ class GenericTable<T> extends StatefulWidget {
   final bool initialAscending;
   final bool autoFetchOnCreate;
   final TableRowBuilder<T>? rowBuilder;
+  final TableRowDecorationBuilder<T>? rowDecorationBuilder;
+  final TableRowTap<T>? onRowTap;
   final TableStateWidgetBuilder<T>? loadingBuilder;
   final TableStateWidgetBuilder<T>? emptyBuilder;
   final TableStateWidgetBuilder<T>? errorBuilder;
   final TableFooterBuilder<T>? footerBuilder;
   final TableStateWidgetBuilder<T>? loadMoreIndicatorBuilder;
-  final ColumnWidthMode columnWidthMode;
-  final GridLinesVisibility gridLinesVisibility;
-  final GridLinesVisibility headerGridLinesVisibility;
+  final BoxDecoration? headerDecoration;
+  final BoxDecoration? rowDecoration;
+  final EdgeInsets? elementsPadding;
+  final EdgeInsets? innerHeaderPadding;
+  final EdgeInsets? innerRowElementsPadding;
+  final EdgeInsets? outterHeaderPadding;
+  final EdgeInsets? outterRowsPadding;
+  final TextStyle? headerTextStyle;
+  final bool addSpacerToActions;
   final double rowHeight;
   final double headerRowHeight;
   final double defaultColumnWidth;
-  final SelectionMode selectionMode;
-  final DataGridController? controller;
-  final DataGridCellTapCallback? onCellTap;
-  final DataGridCellDoubleTapCallback? onCellDoubleTap;
   final bool shrinkWrapRows;
-  final bool shrinkWrapColumns;
   final bool showHorizontalScrollbar;
   final bool showVerticalScrollbar;
   final double loadMoreThreshold;
@@ -127,15 +136,18 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   late GenericTableCubit<T> _cubit;
   late GenericDataSource<T> _dataSource;
   late bool _ownsCubit;
+  late final ValueNotifier<bool> _isLoadingAll;
+  late final ValueNotifier<bool> _isLoadingMore;
 
   @override
   void initState() {
     super.initState();
+    _isLoadingAll = ValueNotifier(false);
+    _isLoadingMore = ValueNotifier(false);
     _createCubit();
     _dataSource = GenericDataSource<T>(
       items: _cubit.state.items,
       columns: widget.columns,
-      rowBuilder: widget.rowBuilder,
     );
   }
 
@@ -161,24 +173,20 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
       _dataSource = GenericDataSource<T>(
         items: _cubit.state.items,
         columns: widget.columns,
-        rowBuilder: widget.rowBuilder,
       );
+      _syncLoadingNotifiers(_cubit.state);
       return;
     }
 
     if (oldWidget.columns != widget.columns) {
       _dataSource.updateColumns(widget.columns);
-    } else if (oldWidget.rowBuilder != widget.rowBuilder) {
-      _dataSource = GenericDataSource<T>(
-        items: _cubit.state.items,
-        columns: widget.columns,
-        rowBuilder: widget.rowBuilder,
-      );
     }
   }
 
   @override
   void dispose() {
+    _isLoadingAll.dispose();
+    _isLoadingMore.dispose();
     if (_ownsCubit) {
       unawaited(_cubit.close());
     }
@@ -214,9 +222,15 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   Widget build(BuildContext context) {
     return BlocConsumer<GenericTableCubit<T>, GenericTableState<T>>(
       bloc: _cubit,
-      listenWhen: (previous, current) => previous.items != current.items,
-      listener: (context, state) => _dataSource.updateData(state.items),
+      listenWhen: (previous, current) =>
+          previous.items != current.items || previous.status != current.status,
+      listener: (context, state) {
+        _dataSource.updateData(state.items);
+        _syncLoadingNotifiers(state);
+      },
       builder: (context, state) {
+        _syncLoadingNotifiers(state);
+
         if (state.isFirstLoad) {
           return widget.loadingBuilder?.call(context, state) ??
               const Center(child: CircularProgressIndicator());
@@ -230,48 +244,79 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
               );
         }
 
-        if (state.isEmpty) {
-          return widget.emptyBuilder?.call(context, state) ??
-              const _DefaultEmptyState();
-        }
-
         final table = NotificationListener<ScrollNotification>(
           onNotification: (notification) => _handleScroll(notification, state),
-          child: SfDataGrid(
-            source: _dataSource,
-            columns: [
-              for (final column in widget.columns)
-                column.toGridColumn(
-                  context: context,
-                  state: state,
-                  onSort: _cubit.sort,
-                ),
-            ],
-            columnWidthMode: widget.columnWidthMode,
-            gridLinesVisibility: widget.gridLinesVisibility,
-            headerGridLinesVisibility: widget.headerGridLinesVisibility,
-            rowHeight: widget.rowHeight,
-            headerRowHeight: widget.headerRowHeight,
-            defaultColumnWidth: widget.defaultColumnWidth,
-            selectionMode: widget.selectionMode,
-            controller: widget.controller,
-            onCellTap: widget.onCellTap,
-            onCellDoubleTap: widget.onCellDoubleTap,
-            shrinkWrapRows: widget.shrinkWrapRows,
-            shrinkWrapColumns: widget.shrinkWrapColumns,
-            showHorizontalScrollbar: widget.showHorizontalScrollbar,
-            showVerticalScrollbar: widget.showVerticalScrollbar,
+          child: AdvancedTableWidget(
+            items: state.items,
+            headerItems: widget.columns,
+            isLoadingAll: _isLoadingAll,
+            fullLoadingPlaceHolder:
+                widget.loadingBuilder?.call(context, state) ??
+                const Center(child: CircularProgressIndicator()),
+            onEmptyState:
+                widget.emptyBuilder?.call(context, state) ??
+                const _DefaultEmptyState(),
+            headerDecoration: widget.headerDecoration,
+            rowDecorationBuilder: _hasCustomRowDecoration
+                ? (index, isHovered) =>
+                      _buildRowDecoration(context, state, index, isHovered)
+                : null,
+            elementsPadding: widget.elementsPadding,
+            innerHeaderPadding: widget.innerHeaderPadding,
+            innerRowElementsPadding: widget.innerRowElementsPadding,
+            outterHeaderPadding: widget.outterHeaderPadding,
+            outterRowsPadding: widget.outterRowsPadding,
+            headerTextStyle: widget.headerTextStyle,
+            addSpacerToActions: widget.addSpacerToActions,
+            onRowTap: widget.onRowTap == null
+                ? null
+                : (index) => widget.onRowTap!(state.items[index], index),
+            headerBuilder: (context, header) {
+              return _dataSource.buildHeader(
+                context: context,
+                columnIndex: header.index,
+                state: state,
+                onSort: _cubit.sort,
+                defaultWidth: _resolveDefaultWidth(header.defualtWidth),
+                height: widget.headerRowHeight,
+              );
+            },
+            rowElementsBuilder: (context, rowParams) {
+              return _dataSource.buildRowCells(
+                rowIndex: rowParams.index,
+                defaultWidth: _resolveDefaultWidth(rowParams.defualtWidth),
+                height: widget.rowHeight,
+              );
+            },
+            rowBuilder: (context, index, row, isHovered) {
+              return _buildRow(context, state, index, row, isHovered);
+            },
           ),
         );
 
-        final children = <Widget>[
-          if (widget.shrinkWrapRows) table else Expanded(child: table),
-          _buildFooter(context, state),
-        ];
+        final tableBody = widget.shrinkWrapRows
+            ? SizedBox(height: _shrinkWrapHeight(state), child: table)
+            : Expanded(child: table);
 
-        return Column(children: children);
+        return Column(children: [tableBody, _buildFooter(context, state)]);
       },
     );
+  }
+
+  bool get _hasCustomRowDecoration {
+    return widget.rowDecorationBuilder != null || widget.rowDecoration != null;
+  }
+
+  void _syncLoadingNotifiers(GenericTableState<T> state) {
+    final isLoadingAll = state.isFirstLoad;
+    if (_isLoadingAll.value != isLoadingAll) {
+      _isLoadingAll.value = isLoadingAll;
+    }
+
+    final isLoadingMore = state.isLoadingMore;
+    if (_isLoadingMore.value != isLoadingMore) {
+      _isLoadingMore.value = isLoadingMore;
+    }
   }
 
   bool _handleScroll(
@@ -286,6 +331,71 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
     unawaited(_cubit.loadMore());
     return false;
+  }
+
+  Widget _buildRow(
+    BuildContext context,
+    GenericTableState<T> state,
+    int index,
+    Widget row,
+    bool isHovered,
+  ) {
+    if (_cubit.mode == TableMode.loadMore &&
+        index >= state.items.length - 2 &&
+        state.canLoadMore) {
+      unawaited(_cubit.loadMore());
+    }
+
+    final sizedRow = widget.rowHeight.isNaN
+        ? row
+        : SizedBox(height: widget.rowHeight, child: row);
+    final customBuilder = widget.rowBuilder;
+    if (customBuilder == null) return sizedRow;
+
+    return customBuilder(
+      context,
+      state.items[index],
+      index,
+      sizedRow,
+      isHovered,
+    );
+  }
+
+  BoxDecoration _buildRowDecoration(
+    BuildContext context,
+    GenericTableState<T> state,
+    int index,
+    bool isHovered,
+  ) {
+    final decoration =
+        widget.rowDecorationBuilder?.call(
+          context,
+          state.items[index],
+          index,
+          isHovered,
+        ) ??
+        widget.rowDecoration ??
+        const BoxDecoration();
+
+    if (decoration.borderRadius != null) return decoration;
+
+    return decoration.copyWith(
+      borderRadius: const BorderRadius.all(Radius.circular(8)),
+    );
+  }
+
+  double _resolveDefaultWidth(double packageDefaultWidth) {
+    return widget.defaultColumnWidth.isNaN
+        ? packageDefaultWidth
+        : widget.defaultColumnWidth;
+  }
+
+  double _shrinkWrapHeight(GenericTableState<T> state) {
+    final headerHeight = widget.headerRowHeight.isNaN
+        ? 56.0
+        : widget.headerRowHeight;
+    final rowHeight = widget.rowHeight.isNaN ? 72.0 : widget.rowHeight;
+    return headerHeight + (state.items.length * rowHeight) + 72;
   }
 
   Widget _buildFooter(BuildContext context, GenericTableState<T> state) {

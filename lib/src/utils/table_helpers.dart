@@ -1,52 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_datagrid/datagrid.dart';
-import 'package:table_pagination/src/cubit/generic_table_state.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
-import 'package:table_pagination/src/widgets/sortable_header.dart';
 
 typedef CellTextFormatter = String Function(Object? value);
 
-/// Hàm tiện ích: tạo nhanh 1 [GridColumn] có header bấm-để-sort, thay vì
-/// phải tự viết SortableHeader mỗi lần. Dùng trong `columnsBuilder`:
-///
-/// ```dart
-/// columnsBuilder: (state, onSort) => [
-///   buildSortableColumn(field: 'name', label: 'Tên', state: state, onSort: onSort),
-///   buildSortableColumn(field: 'email', label: 'Email', state: state, onSort: onSort, sortable: false),
-/// ],
-/// ```
-GridColumn buildSortableColumn<T>({
+TableColumnConfig<T> buildSortableColumn<T>({
   required String field,
   required String label,
-  required GenericTableState<T> state,
-  required void Function(String field) onSort,
+  required TableCellValueGetter<T> valueGetter,
+  String? sortField,
   double width = double.nan,
   double minimumWidth = double.nan,
   double maximumWidth = double.nan,
-  ColumnWidthMode columnWidthMode = ColumnWidthMode.none,
   bool sortable = true,
-  Alignment headerAlignment = Alignment.centerLeft,
+  AlignmentGeometry headerAlignment = Alignment.centerLeft,
+  AlignmentGeometry cellAlignment = Alignment.centerLeft,
   EdgeInsetsGeometry headerPadding = const EdgeInsets.symmetric(horizontal: 8),
+  EdgeInsetsGeometry cellPadding = const EdgeInsets.symmetric(horizontal: 8),
 }) {
-  return GridColumn(
-    columnName: field,
+  return textColumn<T>(
+    name: field,
+    label: label,
+    valueGetter: valueGetter,
+    sortField: sortField,
+    sortable: sortable,
     width: width,
     minimumWidth: minimumWidth,
     maximumWidth: maximumWidth,
-    columnWidthMode: columnWidthMode,
-    allowSorting: false,
-    label: Container(
-      padding: headerPadding,
-      alignment: headerAlignment,
-      child: SortableHeader(
-        label: label,
-        field: field,
-        currentSortField: state.sortBy,
-        ascending: state.ascending,
-        sortable: sortable,
-        onTap: () => onSort(field),
-      ),
-    ),
+    headerAlignment: headerAlignment,
+    cellAlignment: cellAlignment,
+    headerPadding: headerPadding,
+    cellPadding: cellPadding,
   );
 }
 
@@ -123,13 +106,6 @@ TableColumnConfig<T> widgetColumn<T>({
     cellPadding: cellPadding,
     headerBuilder: headerBuilder,
   );
-}
-
-DataGridCell<Object?> dataCell({
-  required String columnName,
-  required Object? value,
-}) {
-  return DataGridCell<Object?>(columnName: columnName, value: value);
 }
 
 EdgeInsetsGeometry columnPadding({double horizontal = 8, double vertical = 0}) {
