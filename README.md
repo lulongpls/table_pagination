@@ -123,3 +123,33 @@ GenericTable<User>.withCubit(
   columns: userColumns,
 )
 ```
+
+Override only the default pagination footer styling with `footerBuilder` and
+`PaginationFooterStyle`:
+
+```dart
+GenericTable<User>.withCubit(
+  cubit: cubit,
+  columns: userColumns,
+  footerBuilder: (context, state, cubit) {
+    return PaginationFooter(
+      page: state.page,
+      totalPages: state.totalPages,
+      totalCount: state.totalCount,
+      pageSize: state.pageSize,
+      isLoading: state.isLoading,
+      onPageChanged: cubit.goToPage,
+      labelBuilder: (page, totalPages, totalCount) {
+        return 'Trang $page/$totalPages · $totalCount tài khoản';
+      },
+      style: const PaginationFooterStyle(
+        backgroundColor: Color(0xFFF8FAF9),
+        selectedPageBackgroundColor: Color(0xFFE93D69),
+        selectedPageForegroundColor: Colors.white,
+        pageForegroundColor: Color(0xFF394542),
+        iconForegroundColor: Color(0xFFE93D69),
+      ),
+    );
+  },
+)
+```

@@ -5,6 +5,42 @@ import 'package:flutter/material.dart';
 typedef PaginationLabelBuilder =
     String Function(int page, int totalPages, int totalCount);
 
+class PaginationFooterStyle {
+  const PaginationFooterStyle({
+    this.backgroundColor,
+    this.labelStyle,
+    this.loadingIndicatorColor,
+    this.iconForegroundColor,
+    this.disabledIconForegroundColor,
+    this.pageForegroundColor,
+    this.disabledPageForegroundColor,
+    this.pageBackgroundColor,
+    this.selectedPageForegroundColor,
+    this.selectedPageBackgroundColor,
+    this.pageButtonBorder,
+    this.selectedPageButtonBorder,
+    this.pageButtonBorderRadius,
+    this.pageButtonSize = 36,
+    this.pageButtonSpacing = 2,
+  });
+
+  final Color? backgroundColor;
+  final TextStyle? labelStyle;
+  final Color? loadingIndicatorColor;
+  final Color? iconForegroundColor;
+  final Color? disabledIconForegroundColor;
+  final Color? pageForegroundColor;
+  final Color? disabledPageForegroundColor;
+  final Color? pageBackgroundColor;
+  final Color? selectedPageForegroundColor;
+  final Color? selectedPageBackgroundColor;
+  final BorderSide? pageButtonBorder;
+  final BorderSide? selectedPageButtonBorder;
+  final BorderRadiusGeometry? pageButtonBorderRadius;
+  final double pageButtonSize;
+  final double pageButtonSpacing;
+}
+
 class PaginationFooter extends StatelessWidget {
   const PaginationFooter({
     super.key,
@@ -18,6 +54,11 @@ class PaginationFooter extends StatelessWidget {
     this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     this.labelBuilder,
     this.showFirstLastButtons = true,
+    this.firstPageTooltip = 'First page',
+    this.previousPageTooltip = 'Previous page',
+    this.nextPageTooltip = 'Next page',
+    this.lastPageTooltip = 'Last page',
+    this.style = const PaginationFooterStyle(),
   });
 
   final int page;
@@ -30,6 +71,11 @@ class PaginationFooter extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final PaginationLabelBuilder? labelBuilder;
   final bool showFirstLastButtons;
+  final String firstPageTooltip;
+  final String previousPageTooltip;
+  final String nextPageTooltip;
+  final String lastPageTooltip;
+  final PaginationFooterStyle style;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +85,7 @@ class PaginationFooter extends StatelessWidget {
     final pages = _visiblePages(effectivePage, effectiveTotalPages);
 
     return Material(
-      color: theme.colorScheme.surface,
+      color: style.backgroundColor ?? theme.colorScheme.surface,
       child: Padding(
         padding: padding,
         child: Row(
@@ -53,28 +99,35 @@ class PaginationFooter extends StatelessWidget {
                     ) ??
                     'Page $effectivePage of $effectiveTotalPages · $totalCount rows',
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
+                style: style.labelStyle ?? theme.textTheme.bodySmall,
               ),
             ),
             if (isLoading) ...[
-              const SizedBox(
+              SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: style.loadingIndicatorColor,
+                ),
               ),
               const SizedBox(width: 8),
             ],
             if (showFirstLastButtons)
               _PagerIconButton(
                 icon: Icons.first_page,
-                tooltip: 'First page',
+                tooltip: firstPageTooltip,
                 enabled: !isLoading && effectivePage > 1,
+                foregroundColor: style.iconForegroundColor,
+                disabledForegroundColor: style.disabledIconForegroundColor,
                 onPressed: () => onPageChanged(1),
               ),
             _PagerIconButton(
               icon: Icons.chevron_left,
-              tooltip: 'Previous page',
+              tooltip: previousPageTooltip,
               enabled: !isLoading && effectivePage > 1,
+              foregroundColor: style.iconForegroundColor,
+              disabledForegroundColor: style.disabledIconForegroundColor,
               onPressed: () => onPageChanged(effectivePage - 1),
             ),
             for (final item in pages)
@@ -82,19 +135,24 @@ class PaginationFooter extends StatelessWidget {
                 page: item,
                 selected: item == effectivePage,
                 enabled: !isLoading,
+                style: style,
                 onPressed: () => onPageChanged(item),
               ),
             _PagerIconButton(
               icon: Icons.chevron_right,
-              tooltip: 'Next page',
+              tooltip: nextPageTooltip,
               enabled: !isLoading && effectivePage < effectiveTotalPages,
+              foregroundColor: style.iconForegroundColor,
+              disabledForegroundColor: style.disabledIconForegroundColor,
               onPressed: () => onPageChanged(effectivePage + 1),
             ),
             if (showFirstLastButtons)
               _PagerIconButton(
                 icon: Icons.last_page,
-                tooltip: 'Last page',
+                tooltip: lastPageTooltip,
                 enabled: !isLoading && effectivePage < effectiveTotalPages,
+                foregroundColor: style.iconForegroundColor,
+                disabledForegroundColor: style.disabledIconForegroundColor,
                 onPressed: () => onPageChanged(effectiveTotalPages),
               ),
           ],
@@ -128,23 +186,35 @@ class _PagerIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.enabled,
+    required this.foregroundColor,
+    required this.disabledForegroundColor,
     required this.onPressed,
   });
 
   final IconData icon;
   final String tooltip;
   final bool enabled;
+  final Color? foregroundColor;
+  final Color? disabledForegroundColor;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SizedBox(
       width: 36,
       height: 36,
       child: IconButton(
         padding: EdgeInsets.zero,
         tooltip: tooltip,
-        icon: Icon(icon, size: 20),
+        icon: Icon(
+          icon,
+          size: 20,
+          color: enabled
+              ? foregroundColor
+              : (disabledForegroundColor ?? theme.disabledColor),
+        ),
         onPressed: enabled ? onPressed : null,
       ),
     );
@@ -156,33 +226,53 @@ class _PagerNumberButton extends StatelessWidget {
     required this.page,
     required this.selected,
     required this.enabled,
+    required this.style,
     required this.onPressed,
   });
 
   final int page;
   final bool selected;
   final bool enabled;
+  final PaginationFooterStyle style;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final borderRadius =
+        style.pageButtonBorderRadius ?? BorderRadius.circular(6);
+    final border = selected
+        ? style.selectedPageButtonBorder
+        : style.pageButtonBorder;
+    final foregroundColor = selected
+        ? (style.selectedPageForegroundColor ?? colors.onPrimary)
+        : (style.pageForegroundColor ?? colors.onSurfaceVariant);
+    final disabledForegroundColor =
+        style.disabledPageForegroundColor ?? theme.disabledColor;
+    final backgroundColor = selected
+        ? (style.selectedPageBackgroundColor ?? colors.primary)
+        : (style.pageBackgroundColor ?? Colors.transparent);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: EdgeInsets.symmetric(horizontal: style.pageButtonSpacing),
       child: SizedBox(
-        width: 36,
-        height: 36,
+        width: style.pageButtonSize,
+        height: style.pageButtonSize,
         child: TextButton(
           style: TextButton.styleFrom(
             padding: EdgeInsets.zero,
-            foregroundColor: selected
-                ? colors.onPrimary
-                : colors.onSurfaceVariant,
-            backgroundColor: selected ? colors.primary : Colors.transparent,
+            foregroundColor: foregroundColor,
+            disabledForegroundColor: selected
+                ? foregroundColor
+                : disabledForegroundColor,
+            backgroundColor: backgroundColor,
+            disabledBackgroundColor: selected
+                ? backgroundColor
+                : Colors.transparent,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: borderRadius,
+              side: border ?? BorderSide.none,
             ),
           ),
           onPressed: enabled && !selected ? onPressed : null,

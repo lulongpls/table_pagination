@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:table_pagination/table_pagination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -288,5 +289,55 @@ void main() {
         await cubit.close();
       },
     );
+  });
+
+  group('PaginationFooter', () {
+    testWidgets('supports project label and selected page colors', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PaginationFooter(
+              page: 2,
+              totalPages: 4,
+              totalCount: 40,
+              pageSize: 10,
+              onPageChanged: (_) {},
+              labelBuilder: (page, totalPages, totalCount) {
+                return 'Trang $page/$totalPages · $totalCount tài khoản';
+              },
+              style: const PaginationFooterStyle(
+                backgroundColor: Color(0xFFF8FAF9),
+                selectedPageBackgroundColor: Color(0xFFE93D69),
+                selectedPageForegroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Trang 2/4 · 40 tài khoản'), findsOneWidget);
+
+      final material = tester.widget<Material>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Material && widget.color == const Color(0xFFF8FAF9),
+        ),
+      );
+      expect(material.color, const Color(0xFFF8FAF9));
+
+      final selectedButton = tester.widget<TextButton>(
+        find.ancestor(of: find.text('2'), matching: find.byType(TextButton)),
+      );
+      expect(
+        selectedButton.style?.backgroundColor?.resolve({WidgetState.disabled}),
+        const Color(0xFFE93D69),
+      );
+      expect(
+        selectedButton.style?.foregroundColor?.resolve({WidgetState.disabled}),
+        Colors.white,
+      );
+    });
   });
 }
