@@ -12,6 +12,15 @@ enum TableSortDirection {
       : TableSortDirection.ascending;
 }
 
+/// Chọn nơi thực hiện sort.
+enum TableSortMode {
+  /// Gửi sort xuống [TableFetcher] để server/API trả lại dữ liệu đã sort.
+  online,
+
+  /// Sort ngay trên danh sách item hiện tại trong cubit.
+  local,
+}
+
 /// Server-side sort descriptor for a single table column.
 class TableSort extends Equatable {
   const TableSort({
@@ -49,4 +58,16 @@ class TableSort extends Equatable {
 
   @override
   List<Object?> get props => [field, direction];
+}
+
+List<TableSort> toggleTableSort(List<TableSort> currentSorts, String field) {
+  final index = currentSorts.indexWhere((sort) => sort.field == field);
+  if (index == -1) {
+    return [...currentSorts, TableSort(field: field)];
+  }
+
+  return [
+    for (var i = 0; i < currentSorts.length; i++)
+      if (i == index) currentSorts[i].toggled() else currentSorts[i],
+  ];
 }

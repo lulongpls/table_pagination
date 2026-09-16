@@ -33,7 +33,7 @@ GenericTable<User>(
   mode: TableMode.pagination,
   fetcher: (query) {
     // Send query.page, query.pageSize, query.sortBy, query.ascending,
-    // and query.filters to your API/repository.
+    // query.sorts, and query.filters to your API/repository.
     return userRepository.fetchUsers(query);
   },
   columns: [
@@ -74,6 +74,36 @@ GenericTable<User>(
   elementsPadding: const EdgeInsets.symmetric(vertical: 6),
 )
 ```
+
+Use local sort when the loaded rows should be sorted immediately without a new
+API call:
+
+```dart
+GenericTable<User>(
+  sortMode: TableSortMode.local,
+  fetcher: userRepository.fetchUsers,
+  columns: [
+    textColumn<User>(
+      name: 'name',
+      label: 'Name',
+      sortable: true,
+      valueGetter: (user) => user.name,
+    ),
+    widgetColumn<User>(
+      name: 'status',
+      label: 'Status',
+      sortable: true,
+      localSortValueGetter: (user) => user.active ? 1 : 0,
+      cellBuilder: (user, _) => Chip(
+        label: Text(user.active ? 'Active' : 'Inactive'),
+      ),
+    ),
+  ],
+)
+```
+
+In `TableMode.loadMore`, sort is always online so the API keeps the whole
+dataset in one consistent order.
 
 Use `GenericTable.withCubit` when the screen needs to control filters or sort
 state from outside the table:

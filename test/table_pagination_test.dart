@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:table_pagination/table_pagination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -91,7 +93,123 @@ void main() {
       expect(queries.first.ascending, isTrue);
       expect(queries.last.sortBy, 'name');
       expect(queries.last.ascending, isFalse);
+      expect(queries.last.sorts, [
+        const TableSort(
+          field: 'name',
+          direction: TableSortDirection.descending,
+        ),
+      ]);
       expect(cubit.state.page, 1);
+
+      await cubit.close();
+    });
+
+    test('sort supports multiple online sort fields', () async {
+      final queries = <TableQuery>[];
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (query) async {
+          queries.add(query);
+          return const PagedResult(items: [1], totalCount: 1);
+        },
+      );
+
+      await cubit.sort('name');
+      await cubit.sort('email');
+
+      expect(queries.last.sorts, const [
+        TableSort(field: 'name'),
+        TableSort(field: 'email'),
+      ]);
+      expect(cubit.state.sortPriority('name'), 1);
+      expect(cubit.state.sortPriority('email'), 2);
+
+      await cubit.close();
+    });
+
+    test(
+      'local sort updates items immediately without fetching again',
+      () async {
+        var fetchCount = 0;
+        final cubit = GenericTableCubit<int>(
+          autoFetchOnCreate: false,
+          sortMode: TableSortMode.local,
+          fetcher: (_) async {
+            fetchCount++;
+            return const PagedResult(items: [3, 1, 2], totalCount: 3);
+          },
+        );
+
+        await cubit.fetchFirstPage();
+        await cubit.sort(
+          'value',
+          localComparatorBuilder: (sorts) {
+            return (left, right) => left.compareTo(right);
+          },
+        );
+
+        expect(fetchCount, 1);
+        expect(cubit.state.items, [1, 2, 3]);
+        expect(cubit.state.sorts, const [TableSort(field: 'value')]);
+
+        await cubit.close();
+      },
+    );
+
+    test('loadMore always sorts online even when sortMode is local', () async {
+      final queries = <TableQuery>[];
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        mode: TableMode.loadMore,
+        sortMode: TableSortMode.local,
+        fetcher: (query) async {
+          queries.add(query);
+          return const PagedResult(items: [1], totalCount: 3);
+        },
+      );
+
+      await cubit.fetchFirstPage();
+      await cubit.sort(
+        'value',
+        localComparatorBuilder: (_) {
+          return (left, right) => right.compareTo(left);
+        },
+      );
+
+      expect(queries.length, 2);
+      expect(queries.last.sorts, const [TableSort(field: 'value')]);
+      expect(cubit.state.page, 1);
+
+      await cubit.close();
+    });
+
+    test('online sort keeps existing rows while loading', () async {
+      final completers = <Completer<PagedResult<int>>>[];
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (_) {
+          final completer = Completer<PagedResult<int>>();
+          completers.add(completer);
+          return completer.future;
+        },
+      );
+
+      final firstLoad = cubit.fetchFirstPage();
+      completers.single.complete(
+        const PagedResult(items: [2, 1], totalCount: 2),
+      );
+      await firstLoad;
+
+      final sortFuture = cubit.sort('value');
+
+      expect(cubit.state.status, TableStatus.loading);
+      expect(cubit.state.items, [2, 1]);
+      expect(cubit.state.isFirstLoad, isFalse);
+
+      completers.last.complete(const PagedResult(items: [1, 2], totalCount: 2));
+      await sortFuture;
+
+      expect(cubit.state.items, [1, 2]);
 
       await cubit.close();
     });

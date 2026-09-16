@@ -6,6 +6,7 @@ import 'package:table_pagination/src/widgets/sortable_header.dart';
 
 typedef TableCellValueGetter<T> = Object? Function(T item);
 typedef TableCellBuilder<T> = Widget Function(T item, int rowIndex);
+typedef TableLocalSortValueGetter<T> = Object? Function(T item);
 typedef TableColumnHeaderBuilder<T> =
     Widget Function(
       BuildContext context,
@@ -44,6 +45,7 @@ class TableColumnConfig<T> {
     required this.label,
     this.valueGetter,
     this.cellBuilder,
+    this.localSortValueGetter,
     this.headerBuilder,
     this.sortField,
     this.sortable = false,
@@ -75,6 +77,12 @@ class TableColumnConfig<T> {
 
   /// Full custom widget builder for the cell.
   final TableCellBuilder<T>? cellBuilder;
+
+  /// Value used when [TableSortMode.local] sorts this column.
+  ///
+  /// If omitted, [valueGetter] is used. Values should normally implement
+  /// [Comparable].
+  final TableLocalSortValueGetter<T>? localSortValueGetter;
 
   /// Full custom header builder. When omitted, [SortableHeader] is used.
   final TableColumnHeaderBuilder<T>? headerBuilder;
@@ -109,11 +117,17 @@ class TableColumnConfig<T> {
               field: effectiveSortField,
               currentSortField: state.sortBy,
               ascending: state.ascending,
+              sort: state.sortFor(effectiveSortField),
+              sortPriority: state.sortPriority(effectiveSortField),
               sortable: sortable,
               onTap: () => onSort(effectiveSortField),
             ),
       ),
     );
+  }
+
+  Object? localSortValue(T item) {
+    return localSortValueGetter?.call(item) ?? valueGetter?.call(item);
   }
 
   Widget buildCell({

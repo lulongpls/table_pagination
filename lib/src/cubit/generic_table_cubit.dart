@@ -4,20 +4,25 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:table_pagination/src/core/page_result.dart';
 import 'package:table_pagination/src/core/table_mode.dart';
 import 'package:table_pagination/src/core/table_query.dart';
+import 'package:table_pagination/src/core/table_sort.dart';
 import 'package:table_pagination/src/cubit/generic_table_state.dart';
 
 /// Hàm do người dùng lib cung cấp để lấy dữ liệu thật (gọi API, query DB...).
 /// Cubit sẽ gọi hàm này mỗi khi cần: load lần đầu, load more, đổi trang,
 /// đổi cột sort, đổi filter.
 typedef TableFetcher<T> = Future<PagedResult<T>> Function(TableQuery query);
+typedef TableLocalSortComparatorBuilder<T> =
+    Comparator<T>? Function(List<TableSort> sorts);
 
 class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
   GenericTableCubit({
     required this.fetcher,
     this.mode = TableMode.pagination,
+    this.sortMode = TableSortMode.online,
     int pageSize = 20,
     Map<String, dynamic> initialFilters = const {},
     String? initialSortBy,
+    List<TableSort> initialSorts = const [],
     bool initialAscending = true,
     bool autoFetchOnCreate = true,
   }) : super(
@@ -25,6 +30,9 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
            filters: initialFilters,
            sortBy: initialSortBy,
            ascending: initialAscending,
+           sorts: initialSorts.isNotEmpty
+               ? initialSorts
+               : _initialSortsFromLegacy(initialSortBy, initialAscending),
          ),
        ) {
     if (autoFetchOnCreate) {
@@ -34,7 +42,17 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
 
   final TableFetcher<T> fetcher;
   final TableMode mode;
+  final TableSortMode sortMode;
   int _requestId = 0;
+
+  static List<TableSort> _initialSortsFromLegacy(
+    String? sortBy,
+    bool ascending,
+  ) {
+    if (sortBy == null || sortBy.isEmpty) return const [];
+
+    return [TableSort.fromAscending(field: sortBy, ascending: ascending)];
+  }
 
   /// Gọi khi mở màn hình lần đầu, hoặc muốn tải lại từ đầu (pull-to-refresh...).
   Future<void> fetchFirstPage() => reload();
@@ -67,6 +85,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
           page: 1,
           totalCount: result.totalCount,
           hasReachedMax: _hasReachedMax(result.items.length, result.totalCount),
+          hasLoadedOnce: true,
           errorMessage: null,
         ),
       );
@@ -103,6 +122,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
           hasReachedMax:
               _hasReachedMax(merged.length, result.totalCount) ||
               result.items.isEmpty,
+          hasLoadedOnce: true,
           errorMessage: null,
         ),
       );
@@ -136,6 +156,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
           page: targetPage,
           totalCount: result.totalCount,
           hasReachedMax: false,
+          hasLoadedOnce: true,
           errorMessage: null,
         ),
       );
@@ -148,26 +169,70 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
     }
   }
 
-  /// Bấm vào header cột [field] để sort. Bấm lần 1 → tăng dần, bấm lại cùng
-  /// cột → đảo chiều, bấm cột khác → reset về tăng dần theo cột mới.
-  /// Luôn reset về trang 1 vì thứ tự dữ liệu đã đổi hoàn toàn.
-  Future<void> sort(String field) async {
-    final bool newAscending = state.sortBy == field ? !state.ascending : true;
+  /// Bấm vào header cột [field] để sort nhiều cột.
+  ///
+  /// Cột mới sẽ được thêm vào cuối danh sách sort. Bấm lại cùng cột sẽ đảo
+  /// chiều sort của cột đó. Nếu [sortMode] là [TableSortMode.local], cubit sort
+  /// ngay danh sách hiện tại bằng [localComparatorBuilder]. Riêng
+  /// [TableMode.loadMore] luôn sort online để server/API giữ đúng thứ tự toàn bộ
+  /// dataset.
+  Future<void> sort(
+    String field, {
+    TableSortMode? mode,
+    TableLocalSortComparatorBuilder<T>? localComparatorBuilder,
+  }) async {
+    final nextSorts = toggleTableSort(state.sorts, field);
+    final primarySort = nextSorts.isEmpty ? null : nextSorts.first;
+    final effectiveMode = _effectiveSortMode(mode);
+
+    if (effectiveMode == TableSortMode.local) {
+      final comparator = localComparatorBuilder?.call(nextSorts);
+      final sortedItems = [...state.items];
+      if (comparator != null) {
+        sortedItems.sort(comparator);
+      }
+
+      _requestId++;
+      emit(
+        state.copyWith(
+          status: TableStatus.success,
+          items: sortedItems,
+          sortBy: primarySort?.field,
+          ascending: primarySort?.ascending ?? true,
+          sorts: nextSorts,
+          hasLoadedOnce: true,
+          errorMessage: null,
+          clearSortBy: primarySort == null,
+        ),
+      );
+      return;
+    }
+
     emit(
       state.copyWith(
-        sortBy: field,
-        ascending: newAscending,
+        sortBy: primarySort?.field,
+        ascending: primarySort?.ascending ?? true,
+        sorts: nextSorts,
+        errorMessage: null,
+        clearSortBy: primarySort == null,
+      ),
+    );
+    await reload(keepItems: true);
+  }
+
+  Future<void> clearSort({TableSortMode? mode}) async {
+    final effectiveMode = _effectiveSortMode(mode);
+    emit(
+      state.copyWith(
+        clearSortBy: true,
+        ascending: true,
+        sorts: const [],
         errorMessage: null,
       ),
     );
-    await reload();
-  }
-
-  Future<void> clearSort() async {
-    emit(
-      state.copyWith(clearSortBy: true, ascending: true, errorMessage: null),
-    );
-    await reload();
+    if (effectiveMode == TableSortMode.online) {
+      await reload(keepItems: true);
+    }
   }
 
   /// Áp dụng bộ lọc mới (thay thế toàn bộ filter cũ) và tải lại từ trang 1.
@@ -230,6 +295,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
         items: items,
         totalCount: totalCount,
         hasReachedMax: _hasReachedMax(items.length, totalCount),
+        hasLoadedOnce: true,
         errorMessage: null,
       ),
     );
@@ -270,6 +336,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
       state.copyWith(
         status: TableStatus.success,
         items: items,
+        hasLoadedOnce: true,
         errorMessage: null,
       ),
     );
@@ -309,6 +376,7 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
         items: items,
         totalCount: totalCount,
         hasReachedMax: _hasReachedMax(items.length, totalCount),
+        hasLoadedOnce: true,
         errorMessage: null,
       ),
     );
@@ -320,8 +388,14 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
       pageSize: state.pageSize,
       sortBy: state.sortBy,
       ascending: state.ascending,
+      sorts: state.sorts,
       filters: state.filters,
     );
+  }
+
+  TableSortMode _effectiveSortMode(TableSortMode? mode) {
+    if (this.mode == TableMode.loadMore) return TableSortMode.online;
+    return mode ?? sortMode;
   }
 
   int _normalizePage(int page) {

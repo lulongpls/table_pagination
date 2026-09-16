@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:table_pagination/src/core/table_sort.dart';
 
 /// Header 1 cột có thể bấm để sort, tự hiển thị icon mũi tên lên/xuống theo
 /// trạng thái sort hiện tại của cubit. Dùng bên trong hàm columnsBuilder mà
@@ -11,6 +12,8 @@ class SortableHeader extends StatelessWidget {
     required this.currentSortField,
     required this.ascending,
     required this.onTap,
+    this.sort,
+    this.sortPriority = 0,
     this.sortable = true,
   });
 
@@ -18,6 +21,8 @@ class SortableHeader extends StatelessWidget {
   final String field;
   final String? currentSortField;
   final bool ascending;
+  final TableSort? sort;
+  final int sortPriority;
   final VoidCallback onTap;
 
   /// Đặt false nếu cột này không cho sort (vẫn hiển thị label bình thường).
@@ -25,7 +30,10 @@ class SortableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isActive = sortable && currentSortField == field;
+    final activeSort = sort;
+    final bool isActive =
+        sortable && (activeSort != null || currentSortField == field);
+    final isAscending = activeSort?.ascending ?? ascending;
 
     final Widget content = Row(
       mainAxisSize: MainAxisSize.min,
@@ -42,12 +50,16 @@ class SortableHeader extends StatelessWidget {
           Icon(
             !isActive
                 ? Icons.unfold_more
-                : (ascending ? Icons.arrow_upward : Icons.arrow_downward),
+                : (isAscending ? Icons.arrow_upward : Icons.arrow_downward),
             size: 14,
             color: isActive
                 ? Theme.of(context).colorScheme.primary
                 : Theme.of(context).disabledColor,
           ),
+          if (isActive && sortPriority > 1) ...[
+            const SizedBox(width: 2),
+            _SortPriorityBadge(value: sortPriority),
+          ],
         ],
       ],
     );
@@ -55,5 +67,34 @@ class SortableHeader extends StatelessWidget {
     if (!sortable) return content;
 
     return InkWell(onTap: onTap, child: content);
+  }
+}
+
+class _SortPriorityBadge extends StatelessWidget {
+  const _SortPriorityBadge({required this.value});
+
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: colors.primary,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$value',
+        style: TextStyle(
+          color: colors.onPrimary,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_advanced_table/flutter_advanced_table.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:table_pagination/src/core/table_mode.dart';
+import 'package:table_pagination/src/core/table_sort.dart';
 import 'package:table_pagination/src/cubit/generic_table_cubit.dart';
 import 'package:table_pagination/src/cubit/generic_table_state.dart';
 import 'package:table_pagination/src/data_source/generic_data_source.dart';
@@ -27,9 +28,11 @@ class GenericTable<T> extends StatefulWidget {
     required this.fetcher,
     required this.columns,
     this.mode = TableMode.pagination,
+    this.sortMode = TableSortMode.online,
     this.pageSize = 20,
     this.initialFilters = const {},
     this.initialSortBy,
+    this.initialSorts = const [],
     this.initialAscending = true,
     this.autoFetchOnCreate = true,
     this.rowBuilder,
@@ -88,9 +91,11 @@ class GenericTable<T> extends StatefulWidget {
     this.loadMoreThreshold = 160,
   }) : fetcher = null,
        mode = TableMode.pagination,
+       sortMode = TableSortMode.online,
        pageSize = 20,
        initialFilters = const {},
        initialSortBy = null,
+       initialSorts = const [],
        initialAscending = true,
        autoFetchOnCreate = true;
 
@@ -98,9 +103,11 @@ class GenericTable<T> extends StatefulWidget {
   final GenericTableCubit<T>? cubit;
   final List<TableColumnConfig<T>> columns;
   final TableMode mode;
+  final TableSortMode sortMode;
   final int pageSize;
   final Map<String, dynamic> initialFilters;
   final String? initialSortBy;
+  final List<TableSort> initialSorts;
   final bool initialAscending;
   final bool autoFetchOnCreate;
   final TableRowBuilder<T>? rowBuilder;
@@ -160,8 +167,10 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
         _ownsCubit &&
         (oldWidget.fetcher != widget.fetcher ||
             oldWidget.mode != widget.mode ||
+            oldWidget.sortMode != widget.sortMode ||
             oldWidget.pageSize != widget.pageSize ||
             oldWidget.initialSortBy != widget.initialSortBy ||
+            !listEquals(oldWidget.initialSorts, widget.initialSorts) ||
             oldWidget.initialAscending != widget.initialAscending ||
             !mapEquals(oldWidget.initialFilters, widget.initialFilters));
 
@@ -209,9 +218,11 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
     _cubit = GenericTableCubit<T>(
       fetcher: fetcher,
       mode: widget.mode,
+      sortMode: widget.sortMode,
       pageSize: widget.pageSize,
       initialFilters: widget.initialFilters,
       initialSortBy: widget.initialSortBy,
+      initialSorts: widget.initialSorts,
       initialAscending: widget.initialAscending,
       autoFetchOnCreate: widget.autoFetchOnCreate,
     );
@@ -253,9 +264,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             fullLoadingPlaceHolder:
                 widget.loadingBuilder?.call(context, state) ??
                 const Center(child: CircularProgressIndicator()),
-            onEmptyState:
-                widget.emptyBuilder?.call(context, state) ??
-                const _DefaultEmptyState(),
+            onEmptyState: _buildEmptyState(context, state),
             headerDecoration: widget.headerDecoration,
             rowDecorationBuilder: _hasCustomRowDecoration
                 ? (index, isHovered) =>
@@ -276,7 +285,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
                 context: context,
                 columnIndex: header.index,
                 state: state,
-                onSort: _cubit.sort,
+                onSort: _sortColumn,
                 defaultWidth: _resolveDefaultWidth(header.defualtWidth),
                 height: widget.headerRowHeight,
               );
@@ -305,6 +314,75 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
   bool get _hasCustomRowDecoration {
     return widget.rowDecorationBuilder != null || widget.rowDecoration != null;
+  }
+
+  Widget _buildEmptyState(BuildContext context, GenericTableState<T> state) {
+    if (state.isLoading) {
+      return widget.loadingBuilder?.call(context, state) ??
+          const Center(child: CircularProgressIndicator());
+    }
+
+    return widget.emptyBuilder?.call(context, state) ??
+        const _DefaultEmptyState();
+  }
+
+  void _sortColumn(String field) {
+    unawaited(
+      _cubit.sort(field, localComparatorBuilder: _buildLocalSortComparator),
+    );
+  }
+
+  Comparator<T>? _buildLocalSortComparator(List<TableSort> sorts) {
+    final sortableColumns = [
+      for (final sort in sorts) _columnForSortField(sort.field),
+    ];
+
+    if (sortableColumns.every((column) => column == null)) {
+      return null;
+    }
+
+    return (left, right) {
+      for (var i = 0; i < sorts.length; i++) {
+        final column = sortableColumns[i];
+        if (column == null) continue;
+
+        final result = _compareSortValues(
+          column.localSortValue(left),
+          column.localSortValue(right),
+        );
+        if (result != 0) {
+          return sorts[i].ascending ? result : -result;
+        }
+      }
+
+      return 0;
+    };
+  }
+
+  TableColumnConfig<T>? _columnForSortField(String field) {
+    for (final column in widget.columns) {
+      if (column.effectiveSortField == field || column.name == field) {
+        return column;
+      }
+    }
+
+    return null;
+  }
+
+  int _compareSortValues(Object? left, Object? right) {
+    if (identical(left, right)) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+
+    if (left is Comparable && right is Comparable) {
+      try {
+        return left.compareTo(right);
+      } catch (_) {
+        // Fall through to string comparison when Comparable types differ.
+      }
+    }
+
+    return left.toString().compareTo(right.toString());
   }
 
   void _syncLoadingNotifiers(GenericTableState<T> state) {

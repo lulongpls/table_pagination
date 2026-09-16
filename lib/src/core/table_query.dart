@@ -8,6 +8,7 @@ class TableQuery extends Equatable {
   final int pageSize;
   final String? sortBy;
   final bool ascending;
+  final List<TableSort> sorts;
   final Map<String, dynamic> filters;
 
   const TableQuery({
@@ -15,14 +16,24 @@ class TableQuery extends Equatable {
     this.pageSize = 20,
     this.sortBy,
     this.ascending = true,
+    this.sorts = const [],
     this.filters = const {},
   });
 
   TableSort? get sort {
-    final field = sortBy;
-    if (field == null || field.isEmpty) return null;
+    final effectiveSorts = this.effectiveSorts;
+    if (effectiveSorts.isEmpty) return null;
 
-    return TableSort.fromAscending(field: field, ascending: ascending);
+    return effectiveSorts.first;
+  }
+
+  List<TableSort> get effectiveSorts {
+    if (sorts.isNotEmpty) return sorts;
+
+    final field = sortBy;
+    if (field == null || field.isEmpty) return const [];
+
+    return [TableSort.fromAscending(field: field, ascending: ascending)];
   }
 
   TableQuery copyWith({
@@ -30,6 +41,7 @@ class TableQuery extends Equatable {
     int? pageSize,
     String? sortBy,
     bool? ascending,
+    List<TableSort>? sorts,
     Map<String, dynamic>? filters,
     bool clearSort = false,
   }) {
@@ -38,10 +50,18 @@ class TableQuery extends Equatable {
       pageSize: pageSize ?? this.pageSize,
       sortBy: clearSort ? null : (sortBy ?? this.sortBy),
       ascending: ascending ?? this.ascending,
+      sorts: clearSort ? const [] : (sorts ?? this.sorts),
       filters: filters ?? this.filters,
     );
   }
 
   @override
-  List<Object?> get props => [page, pageSize, sortBy, ascending, filters];
+  List<Object?> get props => [
+    page,
+    pageSize,
+    sortBy,
+    ascending,
+    sorts,
+    filters,
+  ];
 }
