@@ -140,7 +140,6 @@ class GenericTableCubit<T> extends Cubit<GenericTableState<T>> {
   Future<void> goToPage(int page) async {
     if (mode != TableMode.pagination) return;
     final targetPage = _normalizePage(page);
-    if (targetPage == state.page && state.status == TableStatus.success) return;
 
     final requestId = ++_requestId;
     emit(state.copyWith(status: TableStatus.loading, errorMessage: null));

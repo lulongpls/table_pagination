@@ -261,6 +261,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             items: state.items,
             headerItems: widget.columns,
             isLoadingAll: _isLoadingAll,
+
             fullLoadingPlaceHolder:
                 widget.loadingBuilder?.call(context, state) ??
                 const Center(child: CircularProgressIndicator()),
@@ -299,7 +300,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             },
             rowBuilder: (context, index, row, isHovered) {
               return _buildRow(context, state, index, row, isHovered);
-            },
+            }
           ),
         );
 
