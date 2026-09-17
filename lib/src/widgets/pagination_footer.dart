@@ -275,7 +275,7 @@ class _PagerNumberButton extends StatelessWidget {
               side: border ?? BorderSide.none,
             ),
           ),
-          onPressed: enabled && !selected ? onPressed : null,
+          onPressed: enabled ? onPressed : null,
           child: Text('$page'),
         ),
       ),
