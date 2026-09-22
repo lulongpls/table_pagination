@@ -340,4 +340,47 @@ void main() {
       );
     });
   });
+
+  group('GenericTable sticky footer', () {
+    testWidgets('uses a loose table body when stickyFooter is enabled', (
+      tester,
+    ) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (_) async => const PagedResult(items: [1], totalCount: 1),
+      );
+
+      await cubit.fetchFirstPage();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 400,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                stickyFooter: true,
+                columns: [
+                  textColumn<int>(
+                    name: 'value',
+                    label: 'Value',
+                    valueGetter: (item) => item,
+                  ),
+                ],
+                footerBuilder: (context, state, cubit) =>
+                    const SizedBox(height: 40, child: Text('Footer')),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('generic-table-sticky-footer-body')),
+        findsOneWidget,
+      );
+      expect(find.text('Footer'), findsOneWidget);
+
+      await cubit.close();
+    });
+  });
 }

@@ -59,6 +59,7 @@ class GenericTable<T> extends StatefulWidget {
     this.showHorizontalScrollbar = true,
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
+    this.stickyFooter = false,
   }) : cubit = null;
 
   const GenericTable.withCubit({
@@ -89,6 +90,7 @@ class GenericTable<T> extends StatefulWidget {
     this.showHorizontalScrollbar = true,
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
+    this.stickyFooter = false,
   }) : fetcher = null,
        mode = TableMode.pagination,
        sortMode = TableSortMode.online,
@@ -134,6 +136,10 @@ class GenericTable<T> extends StatefulWidget {
   final bool showHorizontalScrollbar;
   final bool showVerticalScrollbar;
   final double loadMoreThreshold;
+
+  /// When enabled, the footer follows short lists but stays pinned below the
+  /// scrollable table when the rows exceed the available height.
+  final bool stickyFooter;
 
   @override
   State<GenericTable<T>> createState() => _GenericTableState<T>();
@@ -300,12 +306,18 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             },
             rowBuilder: (context, index, row, isHovered) {
               return _buildRow(context, state, index, row, isHovered);
-            }
+            },
           ),
         );
 
         final tableBody = widget.shrinkWrapRows
             ? SizedBox(height: _shrinkWrapHeight(state), child: table)
+            : widget.stickyFooter
+            ? Flexible(
+                key: const ValueKey('generic-table-sticky-footer-body'),
+                fit: FlexFit.loose,
+                child: SizedBox(height: _shrinkWrapHeight(state), child: table),
+              )
             : Expanded(child: table);
 
         return Column(children: [tableBody, _buildFooter(context, state)]);

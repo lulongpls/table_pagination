@@ -31,6 +31,7 @@ class User {
 GenericTable<User>(
   pageSize: 20,
   mode: TableMode.pagination,
+  stickyFooter: true,
   fetcher: (query) {
     // Send query.page, query.pageSize, query.sortBy, query.ascending,
     // query.sorts, and query.filters to your API/repository.
@@ -74,6 +75,11 @@ GenericTable<User>(
   elementsPadding: const EdgeInsets.symmetric(vertical: 6),
 )
 ```
+
+Set `stickyFooter: true` when the footer should appear directly after a short
+list, but remain pinned below the table when the rows need to scroll. The
+default is `false`, which keeps the footer at the bottom of the available
+table area.
 
 Use local sort when the loaded rows should be sorted immediately without a new
 API call:
