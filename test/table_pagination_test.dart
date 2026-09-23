@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:table_pagination/table_pagination.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -379,6 +380,192 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Footer'), findsOneWidget);
+
+      await cubit.close();
+    });
+  });
+
+  group('GenericTable row actions', () {
+    Future<GenericTableCubit<int>> createCubit() async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (_) async => const PagedResult(items: [42], totalCount: 1),
+      );
+      await cubit.fetchFirstPage();
+      return cubit;
+    }
+
+    List<TableColumnConfig<int>> columns() {
+      return [
+        textColumn<int>(
+          name: 'value',
+          label: 'Value',
+          valueGetter: (item) => item,
+        ),
+      ];
+    }
+
+    testWidgets('default mode groups more than two actions', (tester) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              columns: columns(),
+              actions: [
+                TableAction<int>(
+                  name: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onTap: (_, _) {},
+                ),
+                TableAction<int>(
+                  name: 'Delete',
+                  icon: const Icon(Icons.delete),
+                  onTap: (_, _) {},
+                ),
+                TableAction<int>(
+                  name: 'Reset',
+                  icon: const Icon(Icons.refresh),
+                  onTap: (_, _) {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      expect(find.byIcon(Icons.edit), findsNothing);
+
+      await cubit.close();
+    });
+
+    testWidgets('full mode passes the row item and index to the callback', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+      int? receivedItem;
+      int? receivedIndex;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              columns: columns(),
+              actionMode: TableActionMode.full,
+              actions: [
+                TableAction<int>(
+                  name: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onTap: (item, index) {
+                    receivedItem = item;
+                    receivedIndex = index;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.edit));
+      expect(receivedItem, 42);
+      expect(receivedIndex, 0);
+
+      await cubit.close();
+    });
+
+    testWidgets('secondary click opens the row actions menu', (tester) async {
+      final cubit = await createCubit();
+      int? receivedItem;
+      int? receivedIndex;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              columns: columns(),
+              actions: [
+                TableAction<int>(
+                  name: 'Delete',
+                  icon: const Icon(Icons.delete),
+                  onTap: (item, index) {
+                    receivedItem = item;
+                    receivedIndex = index;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('42'), buttons: kSecondaryMouseButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete'), findsOneWidget);
+      await tester.tap(find.text('Delete'));
+      expect(receivedItem, 42);
+      expect(receivedIndex, 0);
+
+      await cubit.close();
+    });
+
+    testWidgets('frozen columns render without changing row callbacks', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+      int? tappedItem;
+      int? tappedIndex;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 400,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 180,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 180,
+                    valueGetter: (item) => item + 1,
+                  ),
+                ],
+                onRowTap: (item, index) {
+                  tappedItem = item;
+                  tappedIndex = index;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('First'), findsNWidgets(2));
+      expect(find.text('Second'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('42').last);
+      expect(tappedItem, 42);
+      expect(tappedIndex, 0);
 
       await cubit.close();
     });

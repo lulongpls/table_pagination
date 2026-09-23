@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_advanced_table/flutter_advanced_table.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,8 +10,10 @@ import 'package:table_pagination/src/core/table_sort.dart';
 import 'package:table_pagination/src/cubit/generic_table_cubit.dart';
 import 'package:table_pagination/src/cubit/generic_table_state.dart';
 import 'package:table_pagination/src/data_source/generic_data_source.dart';
+import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
 import 'package:table_pagination/src/widgets/pagination_footer.dart';
+import 'package:table_pagination/src/widgets/frozen_columns_table.dart';
 
 typedef TableStateWidgetBuilder<T> =
     Widget Function(BuildContext context, GenericTableState<T> state);
@@ -60,7 +63,14 @@ class GenericTable<T> extends StatefulWidget {
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
     this.stickyFooter = false,
-  }) : cubit = null;
+    this.actions = const [],
+    this.actionMode = TableActionMode.defaultMode,
+    this.enableActions = true,
+    this.enableContextMenu = true,
+    this.actionsMenuIcon,
+    this.frozenColumnCount = 0,
+  }) : cubit = null,
+       assert(frozenColumnCount >= 0);
 
   const GenericTable.withCubit({
     super.key,
@@ -91,6 +101,12 @@ class GenericTable<T> extends StatefulWidget {
     this.showVerticalScrollbar = true,
     this.loadMoreThreshold = 160,
     this.stickyFooter = false,
+    this.actions = const [],
+    this.actionMode = TableActionMode.defaultMode,
+    this.enableActions = true,
+    this.enableContextMenu = true,
+    this.actionsMenuIcon,
+    this.frozenColumnCount = 0,
   }) : fetcher = null,
        mode = TableMode.pagination,
        sortMode = TableSortMode.online,
@@ -99,7 +115,8 @@ class GenericTable<T> extends StatefulWidget {
        initialSortBy = null,
        initialSorts = const [],
        initialAscending = true,
-       autoFetchOnCreate = true;
+       autoFetchOnCreate = true,
+       assert(frozenColumnCount >= 0);
 
   final TableFetcher<T>? fetcher;
   final GenericTableCubit<T>? cubit;
@@ -136,6 +153,25 @@ class GenericTable<T> extends StatefulWidget {
   final bool showHorizontalScrollbar;
   final bool showVerticalScrollbar;
   final double loadMoreThreshold;
+
+  /// Actions rendered in each row and shown by the row context menu.
+  final List<TableAction<T>> actions;
+
+  /// Controls whether row actions are inline or grouped behind a menu.
+  final TableActionMode actionMode;
+
+  /// Enables rendering of the configured row actions.
+  final bool enableActions;
+
+  /// Enables the secondary-click/two-finger context menu for rows.
+  final bool enableContextMenu;
+
+  /// Optional replacement for the default three-dots actions icon.
+  final Widget? actionsMenuIcon;
+
+  /// Number of columns frozen from the left while the table scrolls
+  /// horizontally.
+  final int frozenColumnCount;
 
   /// When enabled, the footer follows short lists but stays pinned below the
   /// scrollable table when the rows exceed the available height.
@@ -263,51 +299,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
         final table = NotificationListener<ScrollNotification>(
           onNotification: (notification) => _handleScroll(notification, state),
-          child: AdvancedTableWidget(
-            items: state.items,
-            headerItems: widget.columns,
-            isLoadingAll: _isLoadingAll,
-
-            fullLoadingPlaceHolder:
-                widget.loadingBuilder?.call(context, state) ??
-                const Center(child: CircularProgressIndicator()),
-            onEmptyState: _buildEmptyState(context, state),
-            headerDecoration: widget.headerDecoration,
-            rowDecorationBuilder: _hasCustomRowDecoration
-                ? (index, isHovered) =>
-                      _buildRowDecoration(context, state, index, isHovered)
-                : null,
-            elementsPadding: widget.elementsPadding,
-            innerHeaderPadding: widget.innerHeaderPadding,
-            innerRowElementsPadding: widget.innerRowElementsPadding,
-            outterHeaderPadding: widget.outterHeaderPadding,
-            outterRowsPadding: widget.outterRowsPadding,
-            headerTextStyle: widget.headerTextStyle,
-            addSpacerToActions: widget.addSpacerToActions,
-            onRowTap: widget.onRowTap == null
-                ? null
-                : (index) => widget.onRowTap!(state.items[index], index),
-            headerBuilder: (context, header) {
-              return _dataSource.buildHeader(
-                context: context,
-                columnIndex: header.index,
-                state: state,
-                onSort: _sortColumn,
-                defaultWidth: _resolveDefaultWidth(header.defualtWidth),
-                height: widget.headerRowHeight,
-              );
-            },
-            rowElementsBuilder: (context, rowParams) {
-              return _dataSource.buildRowCells(
-                rowIndex: rowParams.index,
-                defaultWidth: _resolveDefaultWidth(rowParams.defualtWidth),
-                height: widget.rowHeight,
-              );
-            },
-            rowBuilder: (context, index, row, isHovered) {
-              return _buildRow(context, state, index, row, isHovered);
-            },
-          ),
+          child: _buildTable(context, state),
         );
 
         final tableBody = widget.shrinkWrapRows
@@ -322,6 +314,184 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
         return Column(children: [tableBody, _buildFooter(context, state)]);
       },
+    );
+  }
+
+  Widget _buildTable(BuildContext context, GenericTableState<T> state) {
+    if (widget.frozenColumnCount > 0) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final actionCount = _layoutActionCount;
+          final packageDefaultWidth =
+              constraints.maxWidth / (widget.columns.length + 1 + actionCount);
+          final defaultWidth = _resolveDefaultWidth(packageDefaultWidth);
+
+          return FrozenColumnsTable<T>(
+            items: state.items,
+            columnCount: widget.columns.length,
+            defaultColumnWidth: defaultWidth,
+            columnWidths: [
+              for (final column in widget.columns)
+                column.resolveWidth(defaultWidth),
+            ],
+            frozenColumnCount: widget.frozenColumnCount,
+            rowHeight: widget.rowHeight,
+            headerRowHeight: widget.headerRowHeight,
+            actions: _actionsEnabled ? widget.actions : const [],
+            actionMode: widget.actionMode,
+            actionIcon: widget.actionsMenuIcon,
+            addSpacerToActions: widget.addSpacerToActions,
+            onRowTap: widget.onRowTap,
+            rowDecorationBuilder: _hasCustomRowDecoration
+                ? (context, item, index, isHovered) =>
+                      _buildRowDecoration(context, state, index, isHovered)
+                : null,
+            rowDecoration: null,
+            headerDecoration: widget.headerDecoration,
+            headerTextStyle: widget.headerTextStyle,
+            innerHeaderPadding: widget.innerHeaderPadding,
+            elementsPadding: widget.elementsPadding,
+            outterHeaderPadding: widget.outterHeaderPadding,
+            outterRowsPadding: widget.outterRowsPadding,
+            emptyBuilder: _buildEmptyState(context, state),
+            headerBuilder: (context, index) => _dataSource.buildHeader(
+              context: context,
+              columnIndex: index,
+              state: state,
+              onSort: _sortColumn,
+              defaultWidth: defaultWidth,
+              height: widget.headerRowHeight,
+            ),
+            rowCellsBuilder: (context, rowIndex) => _dataSource.buildRowCells(
+              rowIndex: rowIndex,
+              defaultWidth: defaultWidth,
+              height: widget.rowHeight,
+            ),
+            rowBuilder: (context, index, row, isHovered) =>
+                _buildRow(context, state, index, row, isHovered),
+          );
+        },
+      );
+    }
+
+    return AdvancedTableWidget(
+      items: state.items,
+      headerItems: widget.columns,
+      isLoadingAll: _isLoadingAll,
+      fullLoadingPlaceHolder:
+          widget.loadingBuilder?.call(context, state) ??
+          const Center(child: CircularProgressIndicator()),
+      onEmptyState: _buildEmptyState(context, state),
+      headerDecoration: widget.headerDecoration,
+      rowDecorationBuilder: _hasCustomRowDecoration
+          ? (index, isHovered) =>
+                _buildRowDecoration(context, state, index, isHovered)
+          : null,
+      elementsPadding: widget.elementsPadding,
+      innerHeaderPadding: widget.innerHeaderPadding,
+      innerRowElementsPadding: widget.innerRowElementsPadding,
+      outterHeaderPadding: widget.outterHeaderPadding,
+      outterRowsPadding: widget.outterRowsPadding,
+      headerTextStyle: widget.headerTextStyle,
+      addSpacerToActions: widget.addSpacerToActions,
+      actions: _actionsEnabled ? _advancedTableActions : null,
+      actionBuilder: _actionsEnabled
+          ? (context, params) => _buildAdvancedAction(
+              context,
+              state.items[params.rowIndex],
+              params.rowIndex,
+              params.index,
+            )
+          : null,
+      onRowTap: widget.onRowTap == null
+          ? null
+          : (index) => widget.onRowTap!(state.items[index], index),
+      headerBuilder: (context, header) {
+        return _dataSource.buildHeader(
+          context: context,
+          columnIndex: header.index,
+          state: state,
+          onSort: _sortColumn,
+          defaultWidth: _resolveDefaultWidth(header.defualtWidth),
+          height: widget.headerRowHeight,
+        );
+      },
+      rowElementsBuilder: (context, rowParams) {
+        return _dataSource.buildRowCells(
+          rowIndex: rowParams.index,
+          defaultWidth: _resolveDefaultWidth(rowParams.defualtWidth),
+          height: widget.rowHeight,
+        );
+      },
+      rowBuilder: (context, index, row, isHovered) {
+        return _buildRow(context, state, index, row, isHovered);
+      },
+    );
+  }
+
+  bool get _actionsEnabled => widget.enableActions && widget.actions.isNotEmpty;
+
+  TableActionMode get _effectiveActionMode {
+    if (widget.actionMode == TableActionMode.defaultMode) {
+      return widget.actions.length > 2
+          ? TableActionMode.group
+          : TableActionMode.full;
+    }
+    return widget.actionMode;
+  }
+
+  int get _layoutActionCount {
+    if (!_actionsEnabled) return 0;
+    return _effectiveActionMode == TableActionMode.group
+        ? 1
+        : widget.actions.length;
+  }
+
+  List<Object> get _advancedTableActions => [
+    for (var i = 0; i < _layoutActionCount; i++) Object(),
+  ];
+
+  Widget _buildAdvancedAction(
+    BuildContext context,
+    T item,
+    int rowIndex,
+    int actionIndex,
+  ) {
+    if (_effectiveActionMode == TableActionMode.group) {
+      return _buildActionGroup(context, item, rowIndex);
+    }
+
+    final action = widget.actions[actionIndex];
+    return Tooltip(
+      message: action.name,
+      child: InkWell(
+        onTap: action.enabled
+            ? () => unawaited(
+                Future<void>.sync(() => action.onTap(item, rowIndex)),
+              )
+            : null,
+        child: action.icon,
+      ),
+    );
+  }
+
+  Widget _buildActionGroup(BuildContext context, T item, int rowIndex) {
+    return PopupMenuButton<int>(
+      padding: EdgeInsets.zero,
+      icon: widget.actionsMenuIcon ?? const Icon(Icons.more_horiz),
+      onSelected: (index) {
+        final action = widget.actions[index];
+        if (!action.enabled) return;
+        unawaited(Future<void>.sync(() => action.onTap(item, rowIndex)));
+      },
+      itemBuilder: (context) => [
+        for (var index = 0; index < widget.actions.length; index++)
+          PopupMenuItem<int>(
+            value: index,
+            enabled: widget.actions[index].enabled,
+            child: _TableActionMenuItem(action: widget.actions[index]),
+          ),
+      ],
     );
   }
 
@@ -440,14 +610,22 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
     final sizedRow = widget.rowHeight.isNaN
         ? row
         : SizedBox(height: widget.rowHeight, child: row);
+    final contextMenuRow = widget.enableContextMenu && _actionsEnabled
+        ? _TableContextMenuRegion<T>(
+            item: state.items[index],
+            rowIndex: index,
+            actions: widget.actions,
+            child: sizedRow,
+          )
+        : sizedRow;
     final customBuilder = widget.rowBuilder;
-    if (customBuilder == null) return sizedRow;
+    if (customBuilder == null) return contextMenuRow;
 
     return customBuilder(
       context,
       state.items[index],
       index,
-      sizedRow,
+      contextMenuRow,
       isHovered,
     );
   }
@@ -604,6 +782,75 @@ class _InlineLoadMoreError extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TableContextMenuRegion<T> extends StatelessWidget {
+  const _TableContextMenuRegion({
+    required this.item,
+    required this.rowIndex,
+    required this.actions,
+    required this.child,
+  });
+
+  final T item;
+  final int rowIndex;
+  final List<TableAction<T>> actions;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        if (event.buttons & kSecondaryMouseButton == 0) return;
+
+        final size = MediaQuery.sizeOf(context);
+        final position = event.position;
+        unawaited(
+          showMenu<TableAction<T>>(
+            context: context,
+            position: RelativeRect.fromLTRB(
+              position.dx,
+              position.dy,
+              size.width - position.dx,
+              size.height - position.dy,
+            ),
+            items: [
+              for (final action in actions)
+                PopupMenuItem<TableAction<T>>(
+                  value: action,
+                  enabled: action.enabled,
+                  child: _TableActionMenuItem(action: action),
+                ),
+            ],
+          ).then((action) {
+            if (action == null || !action.enabled) {
+              return Future<void>.value();
+            }
+            return Future<void>.sync(() => action.onTap(item, rowIndex));
+          }),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+class _TableActionMenuItem<T> extends StatelessWidget {
+  const _TableActionMenuItem({required this.action});
+
+  final TableAction<T> action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        action.icon,
+        const SizedBox(width: 10),
+        Flexible(child: Text(action.name)),
+      ],
     );
   }
 }

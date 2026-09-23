@@ -8,6 +8,8 @@ Reusable Flutter data grid built on `flutter_advanced_table` and Cubit state.
 - Server-side sorting through custom sortable headers.
 - Filter, refresh, reload, page-size, and page navigation methods on the cubit.
 - Custom columns, custom cell widgets, and per-column header/cell padding.
+- Declarative row actions with inline, grouped, and secondary-click context menus.
+- Frozen leading columns for horizontally scrollable tables.
 - Custom row wrappers and row decorations for card-like rows.
 - Loading, empty, error, load-more, and pagination footer states.
 
@@ -80,6 +82,54 @@ Set `stickyFooter: true` when the footer should appear directly after a short
 list, but remain pinned below the table when the rows need to scroll. The
 default is `false`, which keeps the footer at the bottom of the available
 table area.
+
+Define row actions once instead of creating a dedicated actions column. In
+`defaultMode`, one or two actions are shown inline and more than two actions
+are grouped behind the three-dots menu. Use `full` or `group` to force a mode.
+Rows also open the same named actions with a Windows secondary click or a
+macOS two-finger click.
+
+```dart
+GenericTable<User>(
+  fetcher: userRepository.fetchUsers,
+  columns: userColumns,
+  actions: [
+    TableAction<User>(
+      name: 'Delete',
+      icon: const Icon(Icons.delete_outline),
+      onTap: (user, index) => deleteUser(user),
+    ),
+    TableAction<User>(
+      name: 'Reset password',
+      icon: const Icon(Icons.lock_reset),
+      onTap: (user, index) => resetPassword(user),
+    ),
+  ],
+  actionMode: TableActionMode.defaultMode,
+  enableActions: true,
+  enableContextMenu: true,
+  actionsMenuIcon: const Icon(Icons.more_vert),
+)
+```
+
+Freeze the first columns from left to right with `frozenColumnCount`. Explicit
+column widths make the horizontal overflow predictable:
+
+```dart
+GenericTable<User>(
+  frozenColumnCount: 1,
+  columns: [
+    textColumn<User>(
+      name: 'name',
+      label: 'Name',
+      width: 220,
+      valueGetter: (user) => user.name,
+    ),
+    // Other columns can scroll horizontally.
+  ],
+  fetcher: userRepository.fetchUsers,
+)
+```
 
 Use local sort when the loaded rows should be sorted immediately without a new
 API call:
