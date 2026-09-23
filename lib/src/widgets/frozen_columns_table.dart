@@ -45,6 +45,7 @@ class FrozenColumnsTable<T> extends StatefulWidget {
     required this.headerDecoration,
     required this.headerTextStyle,
     required this.innerHeaderPadding,
+    required this.innerRowElementsPadding,
     required this.elementsPadding,
     required this.outterHeaderPadding,
     required this.outterRowsPadding,
@@ -73,6 +74,7 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   final BoxDecoration? headerDecoration;
   final TextStyle? headerTextStyle;
   final EdgeInsets? innerHeaderPadding;
+  final EdgeInsets? innerRowElementsPadding;
   final EdgeInsets? elementsPadding;
   final EdgeInsets? outterHeaderPadding;
   final EdgeInsets? outterRowsPadding;
@@ -148,41 +150,47 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
             children: [
               header,
               Expanded(
-                child: widget.items.isEmpty
-                    ? widget.emptyBuilder
-                    : ListView.builder(
-                        padding: widget.outterRowsPadding,
-                        itemCount: widget.items.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding:
-                                widget.elementsPadding ??
-                                const EdgeInsets.symmetric(vertical: 5),
-                            child: _FrozenDataRow<T>(
-                              item: widget.items[index],
-                              rowIndex: index,
-                              viewportWidth: viewportWidth,
-                              contentWidth: contentWidth,
-                              frozenWidth: frozenWidth,
-                              frozenCount: frozenCount,
-                              columnCount: widget.columnCount,
-                              columnWidths: widget.columnWidths,
-                              rowCellsBuilder: widget.rowCellsBuilder,
-                              rowBuilder: widget.rowBuilder,
-                              horizontalOffset: _horizontalOffset,
-                              rowHeight: widget.rowHeight,
-                              actions: widget.actions,
-                              actionMode: widget.actionMode,
-                              actionIcon: widget.actionIcon,
-                              actionWidth: actionWidth,
-                              addSpacerToActions: widget.addSpacerToActions,
-                              onRowTap: widget.onRowTap,
-                              rowDecorationBuilder: widget.rowDecorationBuilder,
-                              rowDecoration: widget.rowDecoration,
-                            ),
-                          );
-                        },
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: widget.items.isEmpty
+                      ? widget.emptyBuilder
+                      : ListView.builder(
+                          padding: widget.outterRowsPadding,
+                          itemCount: widget.items.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding:
+                                  widget.elementsPadding ??
+                                  const EdgeInsets.symmetric(vertical: 5),
+                              child: _FrozenDataRow<T>(
+                                item: widget.items[index],
+                                rowIndex: index,
+                                viewportWidth: viewportWidth,
+                                contentWidth: contentWidth,
+                                frozenWidth: frozenWidth,
+                                frozenCount: frozenCount,
+                                columnCount: widget.columnCount,
+                                columnWidths: widget.columnWidths,
+                                rowCellsBuilder: widget.rowCellsBuilder,
+                                rowBuilder: widget.rowBuilder,
+                                horizontalOffset: _horizontalOffset,
+                                rowHeight: widget.rowHeight,
+                                actions: widget.actions,
+                                actionMode: widget.actionMode,
+                                actionIcon: widget.actionIcon,
+                                actionWidth: actionWidth,
+                                addSpacerToActions: widget.addSpacerToActions,
+                                onRowTap: widget.onRowTap,
+                                rowDecorationBuilder:
+                                    widget.rowDecorationBuilder,
+                                rowDecoration: widget.rowDecoration,
+                                innerRowElementsPadding:
+                                    widget.innerRowElementsPadding,
+                              ),
+                            );
+                          },
+                        ),
+                ),
               ),
             ],
           ),
@@ -246,8 +254,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       frozenWidth: frozenWidth,
       offset: _horizontalOffset,
       fixedBackgroundColor:
-          widget.headerDecoration?.color ??
-          Theme.of(context).colorScheme.surface,
+          widget.headerDecoration?.color ?? Colors.transparent,
       fixedChild: frozenCells,
       wrapper: (child) => DefaultTextStyle(
         style:
@@ -314,6 +321,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
     required this.onRowTap,
     required this.rowDecorationBuilder,
     required this.rowDecoration,
+    required this.innerRowElementsPadding,
   });
 
   final T item;
@@ -336,6 +344,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
   final TableRowTap<T>? onRowTap;
   final TableRowDecorationBuilder<T>? rowDecorationBuilder;
   final BoxDecoration? rowDecoration;
+  final EdgeInsets? innerRowElementsPadding;
 
   @override
   State<_FrozenDataRow<T>> createState() => _FrozenDataRowState<T>();
@@ -397,12 +406,21 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
     final frozen = Row(mainAxisSize: MainAxisSize.min, children: frozenCells);
     final all = Row(mainAxisSize: MainAxisSize.min, children: allChildren);
 
+    final rowDecoration =
+        widget.rowDecorationBuilder?.call(
+          context,
+          widget.item,
+          widget.rowIndex,
+          _isHovered,
+        ) ??
+        widget.rowDecoration;
+
     final baseRow = _FrozenHorizontalViewport(
       viewportWidth: widget.viewportWidth,
       contentWidth: widget.contentWidth,
       frozenWidth: widget.frozenWidth,
       offset: widget.horizontalOffset,
-      fixedBackgroundColor: Theme.of(context).colorScheme.surface,
+      fixedBackgroundColor: rowDecoration?.color ?? Colors.transparent,
       controller: _scrollController,
       fixedChild: frozen,
       wrapper: (child) => widget.rowHeight.isNaN
@@ -413,18 +431,11 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
 
     final decoratedRow = AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      decoration:
-          widget.rowDecorationBuilder?.call(
-            context,
-            widget.item,
-            widget.rowIndex,
-            _isHovered,
-          ) ??
-          widget.rowDecoration,
+      decoration: rowDecoration,
+      padding: widget.innerRowElementsPadding,
       child: widget.onRowTap == null
           ? baseRow
-          : GestureDetector(
-              behavior: HitTestBehavior.opaque,
+          : InkWell(
               onTap: () => widget.onRowTap!(widget.item, widget.rowIndex),
               child: baseRow,
             ),

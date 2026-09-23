@@ -329,7 +329,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   }
 
   Widget _buildTable(BuildContext context, GenericTableState<T> state) {
-    if (widget.frozenColumnCount > 0 || _hasActionColumnOverride) {
+    if (widget.frozenColumnCount > 0) {
       return LayoutBuilder(
         builder: (context, constraints) {
           final actionCount = _layoutActionCount;
@@ -363,6 +363,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             headerDecoration: widget.headerDecoration,
             headerTextStyle: widget.headerTextStyle,
             innerHeaderPadding: widget.innerHeaderPadding,
+            innerRowElementsPadding: widget.innerRowElementsPadding,
             elementsPadding: widget.elementsPadding,
             outterHeaderPadding: widget.outterHeaderPadding,
             outterRowsPadding: widget.outterRowsPadding,
@@ -389,7 +390,10 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
     return AdvancedTableWidget(
       items: state.items,
-      headerItems: widget.columns,
+      headerItems: [
+        ...widget.columns,
+        if (_hasActionColumnTitle) const _ActionsHeaderMarker(),
+      ],
       isLoadingAll: _isLoadingAll,
       fullLoadingPlaceHolder:
           widget.loadingBuilder?.call(context, state) ??
@@ -406,7 +410,9 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
       outterHeaderPadding: widget.outterHeaderPadding,
       outterRowsPadding: widget.outterRowsPadding,
       headerTextStyle: widget.headerTextStyle,
-      addSpacerToActions: widget.addSpacerToActions,
+      addSpacerToActions: _hasActionColumnTitle
+          ? false
+          : widget.addSpacerToActions,
       actions: _actionsEnabled ? _advancedTableActions : null,
       actionBuilder: _actionsEnabled
           ? (context, params) => _buildAdvancedAction(
@@ -414,12 +420,17 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
               state.items[params.rowIndex],
               params.rowIndex,
               params.index,
+              params.defualtWidth,
             )
           : null,
       onRowTap: widget.onRowTap == null
           ? null
           : (index) => widget.onRowTap!(state.items[index], index),
       headerBuilder: (context, header) {
+        if (_hasActionColumnTitle && header.index == widget.columns.length) {
+          return _buildActionsHeader(context, header.defualtWidth);
+        }
+
         return _dataSource.buildHeader(
           context: context,
           columnIndex: header.index,
@@ -444,9 +455,8 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
   bool get _actionsEnabled => widget.enableActions && widget.actions.isNotEmpty;
 
-  bool get _hasActionColumnOverride =>
-      _actionsEnabled &&
-      (!widget.actionsColumnWidth.isNaN || widget.actionsColumnTitle != null);
+  bool get _hasActionColumnTitle =>
+      _actionsEnabled && widget.actionsColumnTitle != null;
 
   TableActionMode get _effectiveActionMode {
     if (widget.actionMode == TableActionMode.defaultMode) {
@@ -468,26 +478,59 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
     for (var i = 0; i < _layoutActionCount; i++) Object(),
   ];
 
+  double _advancedActionWidth(double defaultActionWidth) {
+    if (!widget.actionsColumnWidth.isNaN) {
+      return widget.actionsColumnWidth / _layoutActionCount;
+    }
+    return defaultActionWidth;
+  }
+
+  Widget _buildActionsHeader(BuildContext context, double defaultWidth) {
+    final width = widget.actionsColumnWidth.isNaN
+        ? defaultWidth * _layoutActionCount * .5
+        : widget.actionsColumnWidth;
+
+    return SizedBox(
+      width: width,
+      child: Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Text(
+          widget.actionsColumnTitle!,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
   Widget _buildAdvancedAction(
     BuildContext context,
     T item,
     int rowIndex,
     int actionIndex,
+    double defaultActionWidth,
   ) {
     if (_effectiveActionMode == TableActionMode.group) {
-      return _buildActionGroup(context, item, rowIndex);
+      return SizedBox(
+        width: _advancedActionWidth(defaultActionWidth),
+        child: _buildActionGroup(context, item, rowIndex),
+      );
     }
 
     final action = widget.actions[actionIndex];
-    return Tooltip(
-      message: action.name,
-      child: InkWell(
-        onTap: action.enabled
-            ? () => unawaited(
-                Future<void>.sync(() => action.onTap(item, rowIndex)),
-              )
-            : null,
-        child: action.icon,
+    return SizedBox(
+      width: _advancedActionWidth(defaultActionWidth),
+      child: Tooltip(
+        message: action.name,
+        child: InkWell(
+          onTap: action.enabled
+              ? () => unawaited(
+                  Future<void>.sync(() => action.onTap(item, rowIndex)),
+                )
+              : null,
+          child: action.icon,
+        ),
       ),
     );
   }
@@ -822,16 +865,16 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
       onPointerDown: (event) {
         if (event.buttons & kSecondaryMouseButton == 0) return;
 
-        final size = MediaQuery.sizeOf(context);
-        final position = event.position;
+        final overlay = Overlay.of(context).context.findRenderObject();
+        if (overlay is! RenderBox) return;
+
+        final localPosition = overlay.globalToLocal(event.position);
         unawaited(
           showMenu<TableAction<T>>(
             context: context,
-            position: RelativeRect.fromLTRB(
-              position.dx,
-              position.dy,
-              size.width - position.dx,
-              size.height - position.dy,
+            position: RelativeRect.fromRect(
+              Rect.fromLTWH(localPosition.dx, localPosition.dy, 0, 0),
+              Offset.zero & overlay.size,
             ),
             items: [
               for (final action in actions)
@@ -870,4 +913,8 @@ class _TableActionMenuItem<T> extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ActionsHeaderMarker {
+  const _ActionsHeaderMarker();
 }
