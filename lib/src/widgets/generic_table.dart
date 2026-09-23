@@ -68,6 +68,8 @@ class GenericTable<T> extends StatefulWidget {
     this.enableActions = true,
     this.enableContextMenu = true,
     this.actionsMenuIcon,
+    this.actionsColumnWidth = double.nan,
+    this.actionsColumnTitle,
     this.frozenColumnCount = 0,
   }) : cubit = null,
        assert(frozenColumnCount >= 0);
@@ -106,6 +108,8 @@ class GenericTable<T> extends StatefulWidget {
     this.enableActions = true,
     this.enableContextMenu = true,
     this.actionsMenuIcon,
+    this.actionsColumnWidth = double.nan,
+    this.actionsColumnTitle,
     this.frozenColumnCount = 0,
   }) : fetcher = null,
        mode = TableMode.pagination,
@@ -168,6 +172,13 @@ class GenericTable<T> extends StatefulWidget {
 
   /// Optional replacement for the default three-dots actions icon.
   final Widget? actionsMenuIcon;
+
+  /// Total width reserved for the actions area. When omitted, it is derived
+  /// from the default column width and the number of actions.
+  final double actionsColumnWidth;
+
+  /// Optional header text for the automatically rendered actions area.
+  final String? actionsColumnTitle;
 
   /// Number of columns frozen from the left while the table scrolls
   /// horizontally.
@@ -318,7 +329,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   }
 
   Widget _buildTable(BuildContext context, GenericTableState<T> state) {
-    if (widget.frozenColumnCount > 0) {
+    if (widget.frozenColumnCount > 0 || _hasActionColumnOverride) {
       return LayoutBuilder(
         builder: (context, constraints) {
           final actionCount = _layoutActionCount;
@@ -340,6 +351,8 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
             actions: _actionsEnabled ? widget.actions : const [],
             actionMode: widget.actionMode,
             actionIcon: widget.actionsMenuIcon,
+            actionColumnWidth: widget.actionsColumnWidth,
+            actionColumnTitle: widget.actionsColumnTitle,
             addSpacerToActions: widget.addSpacerToActions,
             onRowTap: widget.onRowTap,
             rowDecorationBuilder: _hasCustomRowDecoration
@@ -430,6 +443,10 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   }
 
   bool get _actionsEnabled => widget.enableActions && widget.actions.isNotEmpty;
+
+  bool get _hasActionColumnOverride =>
+      _actionsEnabled &&
+      (!widget.actionsColumnWidth.isNaN || widget.actionsColumnTitle != null);
 
   TableActionMode get _effectiveActionMode {
     if (widget.actionMode == TableActionMode.defaultMode) {

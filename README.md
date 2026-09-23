@@ -106,6 +106,8 @@ GenericTable<User>(
     ),
   ],
   actionMode: TableActionMode.defaultMode,
+  actionsColumnWidth: 140,
+  actionsColumnTitle: 'Actions',
   enableActions: true,
   enableContextMenu: true,
   actionsMenuIcon: const Icon(Icons.more_vert),

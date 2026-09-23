@@ -480,6 +480,43 @@ void main() {
       await cubit.close();
     });
 
+    testWidgets('supports an actions column title and width override', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              columns: columns(),
+              actionsColumnTitle: 'Actions',
+              actionsColumnWidth: 140,
+              actions: [
+                TableAction<int>(
+                  name: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onTap: (_, _) {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Actions'), findsOneWidget);
+      final actionHeader = tester.widget<SizedBox>(
+        find
+            .ancestor(of: find.text('Actions'), matching: find.byType(SizedBox))
+            .first,
+      );
+      expect(actionHeader.width, 140);
+
+      await cubit.close();
+    });
+
     testWidgets('secondary click opens the row actions menu', (tester) async {
       final cubit = await createCubit();
       int? receivedItem;

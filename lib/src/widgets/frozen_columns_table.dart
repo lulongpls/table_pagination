@@ -36,6 +36,8 @@ class FrozenColumnsTable<T> extends StatefulWidget {
     required this.actions,
     required this.actionMode,
     required this.actionIcon,
+    required this.actionColumnWidth,
+    required this.actionColumnTitle,
     required this.addSpacerToActions,
     required this.onRowTap,
     required this.rowDecorationBuilder,
@@ -62,6 +64,8 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   final List<TableAction<T>> actions;
   final TableActionMode actionMode;
   final Widget? actionIcon;
+  final double actionColumnWidth;
+  final String? actionColumnTitle;
   final bool addSpacerToActions;
   final TableRowTap<T>? onRowTap;
   final TableRowDecorationBuilder<T>? rowDecorationBuilder;
@@ -98,12 +102,23 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       builder: (context, constraints) {
         final viewportWidth = constraints.maxWidth;
         final actionCount = _visibleActionCount;
-        final actionWidth = widget.defaultColumnWidth * .5;
+        final defaultActionWidth = widget.defaultColumnWidth * .5;
         final columnsWidth = widget.columnWidths.fold<double>(
           0,
           (sum, width) => sum + width,
         );
-        final actionsWidth = _actionsWidth(actionWidth, actionCount);
+        final defaultActionsWidth = _actionsWidth(
+          defaultActionWidth,
+          actionCount,
+        );
+        final actionsWidth = widget.actionColumnWidth.isNaN
+            ? defaultActionsWidth
+            : widget.actionColumnWidth;
+        final actionWidth = actionCount == 0
+            ? 0.0
+            : widget.actionColumnWidth.isNaN
+            ? defaultActionWidth
+            : widget.actionColumnWidth / actionCount;
         final contentWidth = math.max(
           viewportWidth,
           columnsWidth + actionsWidth,
@@ -122,6 +137,9 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           contentWidth: contentWidth,
           frozenWidth: frozenWidth,
           frozenCount: frozenCount,
+          columnsWidth: columnsWidth,
+          actionsWidth: actionsWidth,
+          actionCount: actionCount,
         );
 
         return Padding(
@@ -179,6 +197,9 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
     required double contentWidth,
     required double frozenWidth,
     required int frozenCount,
+    required double columnsWidth,
+    required double actionsWidth,
+    required int actionCount,
   }) {
     Widget buildCells(int count) {
       return Row(
@@ -190,7 +211,33 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       );
     }
 
-    final allCells = buildCells(widget.columnCount);
+    final headerAction = actionCount == 0
+        ? const SizedBox.shrink()
+        : SizedBox(
+            width: actionsWidth,
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: widget.actionColumnTitle == null
+                  ? null
+                  : Text(
+                      widget.actionColumnTitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+            ),
+          );
+    final headerSpacerWidth = widget.addSpacerToActions
+        ? math.max(0, contentWidth - columnsWidth - actionsWidth).toDouble()
+        : 0.0;
+    final allCells = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        buildCells(widget.columnCount),
+        if (headerSpacerWidth > 0) SizedBox(width: headerSpacerWidth),
+        headerAction,
+      ],
+    );
     final frozenCells = buildCells(frozenCount);
 
     return _FrozenHorizontalViewport(
