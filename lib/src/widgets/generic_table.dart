@@ -539,6 +539,11 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
     return PopupMenuButton<int>(
       padding: EdgeInsets.zero,
       icon: widget.actionsMenuIcon ?? const Icon(Icons.more_horiz),
+      elevation: 2,
+      color: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      menuPadding: const EdgeInsets.symmetric(vertical: 4),
       onSelected: (index) {
         final action = widget.actions[index];
         if (!action.enabled) return;
@@ -549,6 +554,8 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
           PopupMenuItem<int>(
             value: index,
             enabled: widget.actions[index].enabled,
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _TableActionMenuItem(action: widget.actions[index]),
           ),
       ],
@@ -876,11 +883,20 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
               Rect.fromLTWH(localPosition.dx, localPosition.dy, 0, 0),
               Offset.zero & overlay.size,
             ),
+            elevation: 2,
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            menuPadding: const EdgeInsets.symmetric(vertical: 4),
             items: [
               for (final action in actions)
                 PopupMenuItem<TableAction<T>>(
                   value: action,
                   enabled: action.enabled,
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: _TableActionMenuItem(action: action),
                 ),
             ],
@@ -907,9 +923,14 @@ class _TableActionMenuItem<T> extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        action.icon,
-        const SizedBox(width: 10),
-        Flexible(child: Text(action.name)),
+        SizedBox(width: 18, height: 18, child: FittedBox(child: action.icon)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            action.name,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
       ],
     );
   }

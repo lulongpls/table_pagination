@@ -511,6 +511,11 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
       child: PopupMenuButton<int>(
         padding: EdgeInsets.zero,
         icon: widget.actionIcon ?? const Icon(Icons.more_horiz),
+        elevation: 2,
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        menuPadding: const EdgeInsets.symmetric(vertical: 4),
         onSelected: (index) {
           final action = widget.actions[index];
           if (!action.enabled) return;
@@ -523,6 +528,8 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
             PopupMenuItem<int>(
               value: index,
               enabled: widget.actions[index].enabled,
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               child: _ActionMenuItem(action: widget.actions[index]),
             ),
         ],
@@ -650,9 +657,14 @@ class _ActionMenuItem<T> extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        action.icon,
-        const SizedBox(width: 10),
-        Flexible(child: Text(action.name)),
+        SizedBox(width: 18, height: 18, child: FittedBox(child: action.icon)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            action.name,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
       ],
     );
   }
