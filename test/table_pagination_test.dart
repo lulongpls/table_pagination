@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:table_pagination/table_pagination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -383,6 +384,79 @@ void main() {
 
       await cubit.close();
     });
+
+    testWidgets('keeps footer outside horizontal table scroll', (tester) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (_) async => const PagedResult(items: [1], totalCount: 1),
+      );
+      await cubit.fetchFirstPage();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 400,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 180,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 180,
+                    valueGetter: (item) => item + 1,
+                  ),
+                  textColumn<int>(
+                    name: 'third',
+                    label: 'Third',
+                    width: 180,
+                    valueGetter: (item) => item + 2,
+                  ),
+                ],
+                footerBuilder: (context, state, cubit) =>
+                    const SizedBox(height: 40, child: Text('Footer')),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Footer'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('Footer'),
+          matching: find.byType(SingleChildScrollView),
+        ),
+        findsNothing,
+      );
+
+      final footerBefore = tester.getCenter(find.text('Footer')).dx;
+      final headerScrollView = tester.widget<SingleChildScrollView>(
+        find.byType(SingleChildScrollView).first,
+      );
+      expect(
+        headerScrollView.controller!.position.maxScrollExtent,
+        greaterThan(0),
+      );
+
+      headerScrollView.controller!.jumpTo(100);
+      await tester.pump();
+
+      expect(
+        tester.getCenter(find.text('Footer')).dx,
+        closeTo(footerBefore, 0.1),
+      );
+
+      await cubit.close();
+    });
   });
 
   group('GenericTable row actions', () {
@@ -570,19 +644,31 @@ void main() {
               height: 400,
               child: GenericTable<int>.withCubit(
                 cubit: cubit,
-                frozenColumnCount: 1,
+                frozenColumnCount: 2,
                 columns: [
                   textColumn<int>(
                     name: 'first',
                     label: 'First',
-                    width: 180,
+                    width: 120,
                     valueGetter: (item) => item,
                   ),
                   textColumn<int>(
                     name: 'second',
                     label: 'Second',
-                    width: 180,
+                    width: 120,
                     valueGetter: (item) => item + 1,
+                  ),
+                  textColumn<int>(
+                    name: 'third',
+                    label: 'Third',
+                    width: 180,
+                    valueGetter: (item) => item + 2,
+                  ),
+                  textColumn<int>(
+                    name: 'fourth',
+                    label: 'Fourth',
+                    width: 180,
+                    valueGetter: (item) => item + 3,
                   ),
                 ],
                 onRowTap: (item, index) {
@@ -596,15 +682,89 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('First'), findsNWidgets(2));
+      expect(find.text('First'), findsOneWidget);
       expect(find.text('Second'), findsOneWidget);
+      expect(find.text('Third'), findsOneWidget);
+      expect(find.text('Fourth'), findsOneWidget);
       expect(tester.takeException(), isNull);
+
+      final headerScrollView = tester.widget<SingleChildScrollView>(
+        find.byType(SingleChildScrollView).first,
+      );
+      final headerController = headerScrollView.controller!;
+      expect(headerController.position.maxScrollExtent, greaterThan(0));
+
+      final firstBefore = tester.getCenter(find.text('First')).dx;
+      final secondBefore = tester.getCenter(find.text('Second')).dx;
+      final thirdBefore = tester.getCenter(find.text('Third')).dx;
+
+      headerController.jumpTo(100);
+      await tester.pump();
+
+      expect(
+        tester.getCenter(find.text('First')).dx,
+        closeTo(firstBefore, 0.1),
+      );
+      expect(
+        tester.getCenter(find.text('Second')).dx,
+        closeTo(secondBefore, 0.1),
+      );
+      expect(tester.getCenter(find.text('Third')).dx, lessThan(thirdBefore));
 
       await tester.tap(find.text('42').last);
       expect(tappedItem, 42);
       expect(tappedIndex, 0);
 
       await cubit.close();
+    });
+
+    testWidgets('uses headerTextStyle in frozen and non-frozen modes', (
+      tester,
+    ) async {
+      const headerStyle = TextStyle(color: Colors.purple, fontSize: 22);
+
+      Future<TextStyle> renderHeaderStyle(int frozenColumnCount) async {
+        final cubit = await createCubit();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 320,
+                height: 400,
+                child: GenericTable<int>.withCubit(
+                  cubit: cubit,
+                  frozenColumnCount: frozenColumnCount,
+                  headerTextStyle: headerStyle,
+                  columns: [
+                    textColumn<int>(
+                      name: 'value',
+                      label: 'Value',
+                      width: 180,
+                      valueGetter: (item) => item,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text('Value'),
+        );
+        final renderedStyle = paragraph.text.style!;
+        await cubit.close();
+        return renderedStyle;
+      }
+
+      final nonFrozenStyle = await renderHeaderStyle(0);
+      final frozenStyle = await renderHeaderStyle(1);
+
+      expect(nonFrozenStyle.color, headerStyle.color);
+      expect(nonFrozenStyle.fontSize, headerStyle.fontSize);
+      expect(frozenStyle.color, headerStyle.color);
+      expect(frozenStyle.fontSize, headerStyle.fontSize);
     });
   });
 }

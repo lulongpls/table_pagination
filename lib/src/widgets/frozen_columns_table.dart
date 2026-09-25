@@ -150,47 +150,43 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
             children: [
               header,
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: widget.items.isEmpty
-                      ? widget.emptyBuilder
-                      : ListView.builder(
-                          padding: widget.outterRowsPadding,
-                          itemCount: widget.items.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding:
-                                  widget.elementsPadding ??
-                                  const EdgeInsets.symmetric(vertical: 5),
-                              child: _FrozenDataRow<T>(
-                                item: widget.items[index],
-                                rowIndex: index,
-                                viewportWidth: viewportWidth,
-                                contentWidth: contentWidth,
-                                frozenWidth: frozenWidth,
-                                frozenCount: frozenCount,
-                                columnCount: widget.columnCount,
-                                columnWidths: widget.columnWidths,
-                                rowCellsBuilder: widget.rowCellsBuilder,
-                                rowBuilder: widget.rowBuilder,
-                                horizontalOffset: _horizontalOffset,
-                                rowHeight: widget.rowHeight,
-                                actions: widget.actions,
-                                actionMode: widget.actionMode,
-                                actionIcon: widget.actionIcon,
-                                actionWidth: actionWidth,
-                                addSpacerToActions: widget.addSpacerToActions,
-                                onRowTap: widget.onRowTap,
-                                rowDecorationBuilder:
-                                    widget.rowDecorationBuilder,
-                                rowDecoration: widget.rowDecoration,
-                                innerRowElementsPadding:
-                                    widget.innerRowElementsPadding,
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                child: widget.items.isEmpty
+                    ? widget.emptyBuilder
+                    : ListView.builder(
+                        padding: widget.outterRowsPadding,
+                        itemCount: widget.items.length,
+                        itemBuilder: (context, index) {
+                          return Padding(
+                            padding:
+                                widget.elementsPadding ??
+                                const EdgeInsets.symmetric(vertical: 5),
+                            child: _FrozenDataRow<T>(
+                              item: widget.items[index],
+                              rowIndex: index,
+                              viewportWidth: viewportWidth,
+                              contentWidth: contentWidth,
+                              frozenWidth: frozenWidth,
+                              frozenCount: frozenCount,
+                              columnCount: widget.columnCount,
+                              columnWidths: widget.columnWidths,
+                              rowCellsBuilder: widget.rowCellsBuilder,
+                              rowBuilder: widget.rowBuilder,
+                              horizontalOffset: _horizontalOffset,
+                              rowHeight: widget.rowHeight,
+                              actions: widget.actions,
+                              actionMode: widget.actionMode,
+                              actionIcon: widget.actionIcon,
+                              actionWidth: actionWidth,
+                              addSpacerToActions: widget.addSpacerToActions,
+                              onRowTap: widget.onRowTap,
+                              rowDecorationBuilder: widget.rowDecorationBuilder,
+                              rowDecoration: widget.rowDecoration,
+                              innerRowElementsPadding:
+                                  widget.innerRowElementsPadding,
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -209,15 +205,12 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
     required double actionsWidth,
     required int actionCount,
   }) {
-    Widget buildCells(int count) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var index = 0; index < count; index++)
-            widget.headerBuilder(context, index),
-        ],
-      );
-    }
+    final headerStyle =
+        widget.headerTextStyle ?? Theme.of(context).textTheme.labelMedium!;
+    final headerCells = [
+      for (var index = 0; index < widget.columnCount; index++)
+        widget.headerBuilder(context, index),
+    ];
 
     final headerAction = actionCount == 0
         ? const SizedBox.shrink()
@@ -238,15 +231,28 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
     final headerSpacerWidth = widget.addSpacerToActions
         ? math.max(0, contentWidth - columnsWidth - actionsWidth).toDouble()
         : 0.0;
-    final allCells = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        buildCells(widget.columnCount),
-        if (headerSpacerWidth > 0) SizedBox(width: headerSpacerWidth),
-        headerAction,
-      ],
+    // Render frozen headers only in the fixed overlay. Keeping them out of
+    // the scrolling child avoids duplicate titles/semantics and prevents the
+    // scrolling copy from showing through while the table is offset.
+    final scrollingCells = DefaultTextStyle(
+      style: headerStyle,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(width: frozenWidth),
+          ...headerCells.skip(frozenCount),
+          if (headerSpacerWidth > 0) SizedBox(width: headerSpacerWidth),
+          headerAction,
+        ],
+      ),
     );
-    final frozenCells = buildCells(frozenCount);
+    final frozenCells = DefaultTextStyle(
+      style: headerStyle,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: headerCells.take(frozenCount).toList(),
+      ),
+    );
 
     return _FrozenHorizontalViewport(
       viewportWidth: viewportWidth,
@@ -257,8 +263,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           widget.headerDecoration?.color ?? Colors.transparent,
       fixedChild: frozenCells,
       wrapper: (child) => DefaultTextStyle(
-        style:
-            widget.headerTextStyle ?? Theme.of(context).textTheme.labelMedium!,
+        style: headerStyle,
         child: Padding(
           padding:
               (widget.elementsPadding ??
@@ -274,7 +279,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           ),
         ),
       ),
-      child: allCells,
+      child: scrollingCells,
     );
   }
 
@@ -402,9 +407,15 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
   Widget build(BuildContext context) {
     final cells = widget.rowCellsBuilder(context, widget.rowIndex);
     final frozenCells = cells.take(widget.frozenCount).toList();
-    final allChildren = [...cells, ..._buildActions(context)];
     final frozen = Row(mainAxisSize: MainAxisSize.min, children: frozenCells);
-    final all = Row(mainAxisSize: MainAxisSize.min, children: allChildren);
+    final scrolling = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(width: widget.frozenWidth),
+        ...cells.skip(widget.frozenCount),
+        ..._buildActions(context),
+      ],
+    );
 
     final rowDecoration =
         widget.rowDecorationBuilder?.call(
@@ -426,7 +437,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
       wrapper: (child) => widget.rowHeight.isNaN
           ? child
           : SizedBox(height: widget.rowHeight, child: child),
-      child: all,
+      child: scrolling,
     );
 
     final decoratedRow = AnimatedContainer(
@@ -460,12 +471,12 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
               ? TableActionMode.group
               : TableActionMode.full)
         : widget.actionMode;
+    final actionsAreaWidth = mode == TableActionMode.group
+        ? widget.actionWidth
+        : widget.actionWidth * widget.actions.length;
     final actionWidgets = mode == TableActionMode.group
         ? <Widget>[_buildActionGroup(context)]
-        : [
-            for (final action in widget.actions)
-              _buildInlineAction(context, action),
-          ];
+        : <Widget>[_buildFullActions(context, actionsAreaWidth)];
 
     return [
       if (widget.addSpacerToActions)
@@ -477,30 +488,45 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
                   0,
                   (sum, width) => sum + width,
                 ) -
-                widget.actionWidth * actionWidgets.length,
+                actionsAreaWidth,
           ),
         ),
       ...actionWidgets,
     ];
   }
 
-  Widget _buildInlineAction(BuildContext context, TableAction<T> action) {
+  Widget _buildFullActions(BuildContext context, double width) {
     return SizedBox(
-      width: widget.actionWidth,
+      width: width,
       child: Center(
-        child: Tooltip(
-          message: action.name,
-          child: InkWell(
-            onTap: action.enabled
-                ? () => unawaited(
-                    Future<void>.sync(
-                      () => action.onTap(widget.item, widget.rowIndex),
-                    ),
-                  )
-                : null,
-            child: action.icon,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < widget.actions.length; index++) ...[
+              if (index > 0) const SizedBox(width: 10),
+              _buildInlineActionContent(context, widget.actions[index]),
+            ],
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInlineActionContent(
+    BuildContext context,
+    TableAction<T> action,
+  ) {
+    return Tooltip(
+      message: action.name,
+      child: InkWell(
+        onTap: action.enabled
+            ? () => unawaited(
+                Future<void>.sync(
+                  () => action.onTap(widget.item, widget.rowIndex),
+                ),
+              )
+            : null,
+        child: action.icon,
       ),
     );
   }

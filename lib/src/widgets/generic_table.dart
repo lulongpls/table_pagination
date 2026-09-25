@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_advanced_table/flutter_advanced_table.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:table_pagination/src/core/table_mode.dart';
 import 'package:table_pagination/src/core/table_sort.dart';
@@ -24,6 +24,21 @@ typedef TableFooterBuilder<T> =
       GenericTableState<T> state,
       GenericTableCubit<T> cubit,
     );
+
+int _browserContextMenuUsers = 0;
+
+void _acquireBrowserContextMenu() {
+  if (_browserContextMenuUsers++ == 0) {
+    BrowserContextMenu.disableContextMenu();
+  }
+}
+
+void _releaseBrowserContextMenu() {
+  if (_browserContextMenuUsers == 0) return;
+  if (--_browserContextMenuUsers == 0) {
+    BrowserContextMenu.enableContextMenu();
+  }
+}
 
 class GenericTable<T> extends StatefulWidget {
   const GenericTable({
@@ -202,6 +217,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   @override
   void initState() {
     super.initState();
+    _syncBrowserContextMenu(disable: _shouldDisableBrowserContextMenu);
     _isLoadingAll = ValueNotifier(false);
     _isLoadingMore = ValueNotifier(false);
     _createCubit();
@@ -214,6 +230,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   @override
   void didUpdateWidget(covariant GenericTable<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncBrowserContextMenu(disable: _shouldDisableBrowserContextMenu);
 
     final cubitChanged = oldWidget.cubit != widget.cubit;
     final ownedCubitConfigChanged =
@@ -247,12 +264,29 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
   @override
   void dispose() {
+    _syncBrowserContextMenu(disable: false);
     _isLoadingAll.dispose();
     _isLoadingMore.dispose();
     if (_ownsCubit) {
       unawaited(_cubit.close());
     }
     super.dispose();
+  }
+
+  bool get _shouldDisableBrowserContextMenu {
+    return kIsWeb && widget.enableContextMenu && _actionsEnabled;
+  }
+
+  bool _hasBrowserContextMenuReservation = false;
+
+  void _syncBrowserContextMenu({required bool disable}) {
+    if (disable == _hasBrowserContextMenuReservation) return;
+    _hasBrowserContextMenuReservation = disable;
+    if (disable) {
+      _acquireBrowserContextMenu();
+    } else {
+      _releaseBrowserContextMenu();
+    }
   }
 
   void _createCubit() {
@@ -329,126 +363,66 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   }
 
   Widget _buildTable(BuildContext context, GenericTableState<T> state) {
-    if (widget.frozenColumnCount > 0) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final actionCount = _layoutActionCount;
-          final packageDefaultWidth =
-              constraints.maxWidth / (widget.columns.length + 1 + actionCount);
-          final defaultWidth = _resolveDefaultWidth(packageDefaultWidth);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use the same renderer for both modes. With frozenColumnCount == 0,
+        // it still provides horizontal scrolling while keeping the footer
+        // outside the scrollable table body.
+        final layoutSlotCount =
+            widget.columns.length +
+            1 +
+            (_actionsEnabled ? 1 : 0) +
+            (_hasActionColumnTitle ? 1 : 0);
+        final packageDefaultWidth = constraints.maxWidth / layoutSlotCount;
+        final defaultWidth = _resolveDefaultWidth(packageDefaultWidth);
 
-          return FrozenColumnsTable<T>(
-            items: state.items,
-            columnCount: widget.columns.length,
-            defaultColumnWidth: defaultWidth,
-            columnWidths: [
-              for (final column in widget.columns)
-                column.resolveWidth(defaultWidth),
-            ],
-            frozenColumnCount: widget.frozenColumnCount,
-            rowHeight: widget.rowHeight,
-            headerRowHeight: widget.headerRowHeight,
-            actions: _actionsEnabled ? widget.actions : const [],
-            actionMode: widget.actionMode,
-            actionIcon: widget.actionsMenuIcon,
-            actionColumnWidth: widget.actionsColumnWidth,
-            actionColumnTitle: widget.actionsColumnTitle,
-            addSpacerToActions: widget.addSpacerToActions,
-            onRowTap: widget.onRowTap,
-            rowDecorationBuilder: _hasCustomRowDecoration
-                ? (context, item, index, isHovered) =>
-                      _buildRowDecoration(context, state, index, isHovered)
-                : null,
-            rowDecoration: null,
-            headerDecoration: widget.headerDecoration,
-            headerTextStyle: widget.headerTextStyle,
-            innerHeaderPadding: widget.innerHeaderPadding,
-            innerRowElementsPadding: widget.innerRowElementsPadding,
-            elementsPadding: widget.elementsPadding,
-            outterHeaderPadding: widget.outterHeaderPadding,
-            outterRowsPadding: widget.outterRowsPadding,
-            emptyBuilder: _buildEmptyState(context, state),
-            headerBuilder: (context, index) => _dataSource.buildHeader(
-              context: context,
-              columnIndex: index,
-              state: state,
-              onSort: _sortColumn,
-              defaultWidth: defaultWidth,
-              height: widget.headerRowHeight,
-            ),
-            rowCellsBuilder: (context, rowIndex) => _dataSource.buildRowCells(
-              rowIndex: rowIndex,
-              defaultWidth: defaultWidth,
-              height: widget.rowHeight,
-            ),
-            rowBuilder: (context, index, row, isHovered) =>
-                _buildRow(context, state, index, row, isHovered),
-          );
-        },
-      );
-    }
-
-    return AdvancedTableWidget(
-      items: state.items,
-      headerItems: [
-        ...widget.columns,
-        if (_hasActionColumnTitle) const _ActionsHeaderMarker(),
-      ],
-      isLoadingAll: _isLoadingAll,
-      fullLoadingPlaceHolder:
-          widget.loadingBuilder?.call(context, state) ??
-          const Center(child: CircularProgressIndicator()),
-      onEmptyState: _buildEmptyState(context, state),
-      headerDecoration: widget.headerDecoration,
-      rowDecorationBuilder: _hasCustomRowDecoration
-          ? (index, isHovered) =>
-                _buildRowDecoration(context, state, index, isHovered)
-          : null,
-      elementsPadding: widget.elementsPadding,
-      innerHeaderPadding: widget.innerHeaderPadding,
-      innerRowElementsPadding: widget.innerRowElementsPadding,
-      outterHeaderPadding: widget.outterHeaderPadding,
-      outterRowsPadding: widget.outterRowsPadding,
-      headerTextStyle: widget.headerTextStyle,
-      addSpacerToActions: _hasActionColumnTitle
-          ? false
-          : widget.addSpacerToActions,
-      actions: _actionsEnabled ? _advancedTableActions : null,
-      actionBuilder: _actionsEnabled
-          ? (context, params) => _buildAdvancedAction(
-              context,
-              state.items[params.rowIndex],
-              params.rowIndex,
-              params.index,
-              params.defualtWidth,
-            )
-          : null,
-      onRowTap: widget.onRowTap == null
-          ? null
-          : (index) => widget.onRowTap!(state.items[index], index),
-      headerBuilder: (context, header) {
-        if (_hasActionColumnTitle && header.index == widget.columns.length) {
-          return _buildActionsHeader(context, header.defualtWidth);
-        }
-
-        return _dataSource.buildHeader(
-          context: context,
-          columnIndex: header.index,
-          state: state,
-          onSort: _sortColumn,
-          defaultWidth: _resolveDefaultWidth(header.defualtWidth),
-          height: widget.headerRowHeight,
+        return FrozenColumnsTable<T>(
+          items: state.items,
+          columnCount: widget.columns.length,
+          defaultColumnWidth: defaultWidth,
+          columnWidths: [
+            for (final column in widget.columns)
+              column.resolveWidth(defaultWidth),
+          ],
+          frozenColumnCount: widget.frozenColumnCount,
+          rowHeight: widget.rowHeight,
+          headerRowHeight: widget.headerRowHeight,
+          actions: _actionsEnabled ? widget.actions : const [],
+          actionMode: widget.actionMode,
+          actionIcon: widget.actionsMenuIcon,
+          actionColumnWidth: widget.actionsColumnWidth,
+          actionColumnTitle: widget.actionsColumnTitle,
+          addSpacerToActions: widget.addSpacerToActions,
+          onRowTap: widget.onRowTap,
+          rowDecorationBuilder: _hasCustomRowDecoration
+              ? (context, item, index, isHovered) =>
+                    _buildRowDecoration(context, state, index, isHovered)
+              : null,
+          rowDecoration: null,
+          headerDecoration: widget.headerDecoration,
+          headerTextStyle: widget.headerTextStyle,
+          innerHeaderPadding: widget.innerHeaderPadding,
+          innerRowElementsPadding: widget.innerRowElementsPadding,
+          elementsPadding: widget.elementsPadding,
+          outterHeaderPadding: widget.outterHeaderPadding,
+          outterRowsPadding: widget.outterRowsPadding,
+          emptyBuilder: _buildEmptyState(context, state),
+          headerBuilder: (context, index) => _dataSource.buildHeader(
+            context: context,
+            columnIndex: index,
+            state: state,
+            onSort: _sortColumn,
+            defaultWidth: defaultWidth,
+            height: widget.headerRowHeight,
+          ),
+          rowCellsBuilder: (context, rowIndex) => _dataSource.buildRowCells(
+            rowIndex: rowIndex,
+            defaultWidth: defaultWidth,
+            height: widget.rowHeight,
+          ),
+          rowBuilder: (context, index, row, isHovered) =>
+              _buildRow(context, state, index, row, isHovered),
         );
-      },
-      rowElementsBuilder: (context, rowParams) {
-        return _dataSource.buildRowCells(
-          rowIndex: rowParams.index,
-          defaultWidth: _resolveDefaultWidth(rowParams.defualtWidth),
-          height: widget.rowHeight,
-        );
-      },
-      rowBuilder: (context, index, row, isHovered) {
-        return _buildRow(context, state, index, row, isHovered);
       },
     );
   }
@@ -457,110 +431,6 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
   bool get _hasActionColumnTitle =>
       _actionsEnabled && widget.actionsColumnTitle != null;
-
-  TableActionMode get _effectiveActionMode {
-    if (widget.actionMode == TableActionMode.defaultMode) {
-      return widget.actions.length > 2
-          ? TableActionMode.group
-          : TableActionMode.full;
-    }
-    return widget.actionMode;
-  }
-
-  int get _layoutActionCount {
-    if (!_actionsEnabled) return 0;
-    return _effectiveActionMode == TableActionMode.group
-        ? 1
-        : widget.actions.length;
-  }
-
-  List<Object> get _advancedTableActions => [
-    for (var i = 0; i < _layoutActionCount; i++) Object(),
-  ];
-
-  double _advancedActionWidth(double defaultActionWidth) {
-    if (!widget.actionsColumnWidth.isNaN) {
-      return widget.actionsColumnWidth / _layoutActionCount;
-    }
-    return defaultActionWidth;
-  }
-
-  Widget _buildActionsHeader(BuildContext context, double defaultWidth) {
-    final width = widget.actionsColumnWidth.isNaN
-        ? defaultWidth * _layoutActionCount * .5
-        : widget.actionsColumnWidth;
-
-    return SizedBox(
-      width: width,
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Text(
-          widget.actionsColumnTitle!,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdvancedAction(
-    BuildContext context,
-    T item,
-    int rowIndex,
-    int actionIndex,
-    double defaultActionWidth,
-  ) {
-    if (_effectiveActionMode == TableActionMode.group) {
-      return SizedBox(
-        width: _advancedActionWidth(defaultActionWidth),
-        child: _buildActionGroup(context, item, rowIndex),
-      );
-    }
-
-    final action = widget.actions[actionIndex];
-    return SizedBox(
-      width: _advancedActionWidth(defaultActionWidth),
-      child: Tooltip(
-        message: action.name,
-        child: InkWell(
-          onTap: action.enabled
-              ? () => unawaited(
-                  Future<void>.sync(() => action.onTap(item, rowIndex)),
-                )
-              : null,
-          child: action.icon,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionGroup(BuildContext context, T item, int rowIndex) {
-    return PopupMenuButton<int>(
-      padding: EdgeInsets.zero,
-      icon: widget.actionsMenuIcon ?? const Icon(Icons.more_horiz),
-      elevation: 2,
-      color: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      menuPadding: const EdgeInsets.symmetric(vertical: 4),
-      onSelected: (index) {
-        final action = widget.actions[index];
-        if (!action.enabled) return;
-        unawaited(Future<void>.sync(() => action.onTap(item, rowIndex)));
-      },
-      itemBuilder: (context) => [
-        for (var index = 0; index < widget.actions.length; index++)
-          PopupMenuItem<int>(
-            value: index,
-            enabled: widget.actions[index].enabled,
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: _TableActionMenuItem(action: widget.actions[index]),
-          ),
-      ],
-    );
-  }
 
   bool get _hasCustomRowDecoration {
     return widget.rowDecorationBuilder != null || widget.rowDecoration != null;
@@ -715,9 +585,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
     if (decoration.borderRadius != null) return decoration;
 
-    return decoration.copyWith(
-      borderRadius: const BorderRadius.all(Radius.circular(8)),
-    );
+    return decoration.copyWith(borderRadius: BorderRadius.circular(0));
   }
 
   double _resolveDefaultWidth(double packageDefaultWidth) {
@@ -934,8 +802,4 @@ class _TableActionMenuItem<T> extends StatelessWidget {
       ],
     );
   }
-}
-
-class _ActionsHeaderMarker {
-  const _ActionsHeaderMarker();
 }

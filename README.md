@@ -88,6 +88,9 @@ Define row actions once instead of creating a dedicated actions column. In
 are grouped behind the three-dots menu. Use `full` or `group` to force a mode.
 Rows also open the same named actions with a Windows secondary click or a
 macOS two-finger click.
+On web, the native browser context menu is disabled only while an actions-enabled
+table is mounted, then restored when the table is removed. Set
+`enableContextMenu: false` to keep the browser menu.
 
 ```dart
 GenericTable<User>(
