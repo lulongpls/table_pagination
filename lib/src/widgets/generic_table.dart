@@ -357,7 +357,14 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
               )
             : Expanded(child: table);
 
-        return Column(children: [tableBody, _buildFooter(context, state)]);
+        // Keep the footer in the table's viewport. The table body owns all
+        // horizontal scroll views, so the footer must stay a sibling of it
+        // and stretch to the viewport instead of inheriting an intrinsic
+        // width from the horizontally scrollable content.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [tableBody, _buildFooter(context, state)],
+        );
       },
     );
   }

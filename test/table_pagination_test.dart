@@ -420,8 +420,11 @@ void main() {
                     valueGetter: (item) => item + 2,
                   ),
                 ],
-                footerBuilder: (context, state, cubit) =>
-                    const SizedBox(height: 40, child: Text('Footer')),
+                footerBuilder: (context, state, cubit) => const SizedBox(
+                  key: ValueKey('generic-table-footer'),
+                  height: 40,
+                  child: Text('Footer'),
+                ),
               ),
             ),
           ),
@@ -436,6 +439,13 @@ void main() {
           matching: find.byType(SingleChildScrollView),
         ),
         findsNothing,
+      );
+
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('generic-table-footer')))
+            .width,
+        lessThanOrEqualTo(320),
       );
 
       final footerBefore = tester.getCenter(find.text('Footer')).dx;
