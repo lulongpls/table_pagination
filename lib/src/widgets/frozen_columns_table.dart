@@ -82,7 +82,6 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   @override
   State<FrozenColumnsTable<T>> createState() => _FrozenColumnsTableState<T>();
 }
-
 class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
   late final ValueNotifier<double> _horizontalOffset;
 
@@ -144,10 +143,8 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           actionCount: actionCount,
         );
 
-        return Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Column(
-            children: [
+        return Column(
+          children: [
               header,
               Expanded(
                 child: widget.items.isEmpty
@@ -188,8 +185,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
                         },
                       ),
               ),
-            ],
-          ),
+          ],
         );
       },
     );
@@ -264,19 +260,10 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       fixedChild: frozenCells,
       wrapper: (child) => DefaultTextStyle(
         style: headerStyle,
-        child: Padding(
-          padding:
-              (widget.elementsPadding ??
-                      const EdgeInsets.symmetric(vertical: 5))
-                  .add(
-                    widget.outterHeaderPadding ??
-                        const EdgeInsets.only(bottom: 10),
-                  ),
-          child: Container(
-            decoration: widget.headerDecoration,
-            padding: widget.innerHeaderPadding,
-            child: child,
-          ),
+        child: Container(
+          decoration: widget.headerDecoration,
+          padding: widget.innerHeaderPadding,
+          child: child,
         ),
       ),
       child: scrollingCells,
@@ -519,7 +506,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
     return Tooltip(
       message: action.name,
       child: InkWell(
-        onTap: action.enabled
+        onTap: action.isEnabled(widget.item, widget.rowIndex)
             ? () => unawaited(
                 Future<void>.sync(
                   () => action.onTap(widget.item, widget.rowIndex),
@@ -544,7 +531,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
         menuPadding: const EdgeInsets.symmetric(vertical: 4),
         onSelected: (index) {
           final action = widget.actions[index];
-          if (!action.enabled) return;
+          if (!action.isEnabled(widget.item, widget.rowIndex)) return;
           unawaited(
             Future<void>.sync(() => action.onTap(widget.item, widget.rowIndex)),
           );
@@ -553,7 +540,10 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
           for (var index = 0; index < widget.actions.length; index++)
             PopupMenuItem<int>(
               value: index,
-              enabled: widget.actions[index].enabled,
+              enabled: widget.actions[index].isEnabled(
+                widget.item,
+                widget.rowIndex,
+              ),
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: _ActionMenuItem(action: widget.actions[index]),

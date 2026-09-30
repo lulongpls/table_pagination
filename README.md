@@ -117,6 +117,18 @@ GenericTable<User>(
 )
 ```
 
+When an action is available only for some rows, use `enabledBuilder` instead
+of checking inside `onTap`:
+
+```dart
+TableAction<DiaryEntity>(
+  name: 'Delete',
+  icon: const Icon(Icons.delete_outline),
+  enabledBuilder: (item, rowIndex) => canDelete(item),
+  onTap: (item, rowIndex) => deleteItem(item),
+)
+```
+
 Freeze the first columns from left to right with `frozenColumnCount`. Explicit
 column widths make the horizontal overflow predictable:
 

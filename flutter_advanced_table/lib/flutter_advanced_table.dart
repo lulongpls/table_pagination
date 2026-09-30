@@ -158,41 +158,34 @@ class AdvancedTableWidget extends StatelessWidget {
                       final columnWidth =
                           maxWidth / ((headerItems.length + 1) + actionsLength);
 
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Column(
-                          children: [
-                            DefaultTextStyle(
-                              style: headerTextStyle ??
-                                  Theme.of(context).textTheme.labelMedium!,
-                              child: Padding(
-                                padding: paddingObjects.add(
-                                    outterHeaderPadding ??
-                                        const EdgeInsets.only(bottom: 10)),
-                                child: Container(
-                                  decoration: headerDecoration,
-                                  padding: innerHeaderPadding,
-                                  child: Row(
-                                    children: [
-                                      for (int i = 0;
-                                          i < headerItems.length;
-                                          i++) ...[
-                                        headerBuilder(
-                                            context,
-                                            HeaderBuilder(
-                                              value: headerItems[i],
-                                              index: i,
-                                              defualtWidth: columnWidth,
-                                            )),
-                                      ],
-                                      if (addSpacerToActions) ...[
-                                        const Spacer(),
-                                      ],
-                                    ],
-                                  ),
-                                ),
+                      return Column(
+                        children: [
+                          DefaultTextStyle(
+                            style: headerTextStyle ??
+                                Theme.of(context).textTheme.labelMedium!,
+                            child: Container(
+                              decoration: headerDecoration,
+                              padding: innerHeaderPadding,
+                              child: Row(
+                                children: [
+                                  for (int i = 0;
+                                      i < headerItems.length;
+                                      i++) ...[
+                                    headerBuilder(
+                                        context,
+                                        HeaderBuilder(
+                                          value: headerItems[i],
+                                          index: i,
+                                          defualtWidth: columnWidth,
+                                        )),
+                                  ],
+                                  if (addSpacerToActions) ...[
+                                    const Spacer(),
+                                  ],
+                                ],
                               ),
                             ),
+                          ),
                             if (isLoadingMore != null)
                               ValueListenableBuilder(
                                   valueListenable: isLoadingMore!,
@@ -317,9 +310,8 @@ class AdvancedTableWidget extends StatelessWidget {
                                       itemCount: items.length,
                                     ),
                             )),
-                          ],
-                        ),
-                      );
+                      ],
+                    );
                     }));
         });
   }

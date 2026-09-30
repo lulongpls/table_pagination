@@ -769,14 +769,14 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
               for (final action in actions)
                 PopupMenuItem<TableAction<T>>(
                   value: action,
-                  enabled: action.enabled,
+                  enabled: action.isEnabled(item, rowIndex),
                   height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: _TableActionMenuItem(action: action),
                 ),
             ],
           ).then((action) {
-            if (action == null || !action.enabled) {
+            if (action == null || !action.isEnabled(item, rowIndex)) {
               return Future<void>.value();
             }
             return Future<void>.sync(() => action.onTap(item, rowIndex));

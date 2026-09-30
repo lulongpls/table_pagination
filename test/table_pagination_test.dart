@@ -564,6 +564,46 @@ void main() {
       await cubit.close();
     });
 
+    testWidgets('resolves action enabled state per row', (tester) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        fetcher: (_) async => const PagedResult(items: [42, 7], totalCount: 2),
+      );
+      await cubit.fetchFirstPage();
+      var tapCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              actionMode: TableActionMode.full,
+              columns: columns(),
+              actions: [
+                TableAction<int>(
+                  name: 'Delete',
+                  icon: const Icon(Icons.delete_outline),
+                  enabledBuilder: (item, rowIndex) =>
+                      item == 42 && rowIndex == 0,
+                  onTap: (_, _) => tapCount++,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final deleteButtons = find.byIcon(Icons.delete_outline);
+      expect(deleteButtons, findsNWidgets(2));
+
+      await tester.tap(deleteButtons.at(0));
+      await tester.tap(deleteButtons.at(1));
+      expect(tapCount, 1);
+
+      await cubit.close();
+    });
+
     testWidgets('supports an actions column title and width override', (
       tester,
     ) async {
