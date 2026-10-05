@@ -345,13 +345,18 @@ class _FrozenDataRow<T> extends StatefulWidget {
 class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
   late final ScrollController _scrollController;
   bool _isHovered = false;
+  bool _canPublishOffset = false;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
+    _scrollController = ScrollController(
+      initialScrollOffset: widget.horizontalOffset.value,
+      keepScrollOffset: false,
+    );
     _scrollController.addListener(_publishOffset);
     widget.horizontalOffset.addListener(_syncOffset);
+    _scheduleInitialOffsetSync();
   }
 
   @override
@@ -360,6 +365,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
     if (oldWidget.horizontalOffset != widget.horizontalOffset) {
       oldWidget.horizontalOffset.removeListener(_syncOffset);
       widget.horizontalOffset.addListener(_syncOffset);
+      _scheduleInitialOffsetSync();
     }
   }
 
@@ -373,7 +379,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
   }
 
   void _publishOffset() {
-    if (!mounted || !_scrollController.hasClients) return;
+    if (!_canPublishOffset || !mounted || !_scrollController.hasClients) return;
     final current = widget.horizontalOffset.value;
     final next = _scrollController.offset;
     if ((current - next).abs() > .5) {
@@ -388,6 +394,15 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
     if ((_scrollController.offset - next).abs() > .5) {
       _scrollController.jumpTo(next);
     }
+  }
+
+  void _scheduleInitialOffsetSync() {
+    _canPublishOffset = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncOffset();
+      _canPublishOffset = true;
+    });
   }
 
   @override
