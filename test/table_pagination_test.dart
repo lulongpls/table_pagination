@@ -768,6 +768,84 @@ void main() {
       await cubit.close();
     });
 
+    testWidgets('shows frozen column shadow only after horizontal scrolling', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 400,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 120,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 240,
+                    valueGetter: (item) => item + 1,
+                  ),
+                  textColumn<int>(
+                    name: 'third',
+                    label: 'Third',
+                    width: 240,
+                    valueGetter: (item) => item + 2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final frozenOverlays = find.byKey(
+        const ValueKey('frozen-columns-shadow'),
+      );
+      expect(frozenOverlays, findsOneWidget);
+      expect(
+        (tester.widget<DecoratedBox>(frozenOverlays).decoration
+                as BoxDecoration)
+            .boxShadow,
+        isNull,
+      );
+
+      final headerScrollView = tester.widget<SingleChildScrollView>(
+        find.byType(SingleChildScrollView).first,
+      );
+      headerScrollView.controller!.jumpTo(100);
+      await tester.pump();
+
+      expect(
+        (tester.widget<DecoratedBox>(frozenOverlays).decoration
+                as BoxDecoration)
+            .boxShadow,
+        isNotEmpty,
+      );
+
+      headerScrollView.controller!.jumpTo(0);
+      await tester.pump();
+
+      expect(
+        (tester.widget<DecoratedBox>(frozenOverlays).decoration
+                as BoxDecoration)
+            .boxShadow,
+        isNull,
+      );
+
+      await cubit.close();
+    });
+
     testWidgets('uses headerTextStyle in frozen and non-frozen modes', (
       tester,
     ) async {

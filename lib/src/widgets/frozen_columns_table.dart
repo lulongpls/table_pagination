@@ -82,6 +82,7 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   @override
   State<FrozenColumnsTable<T>> createState() => _FrozenColumnsTableState<T>();
 }
+
 class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
   late final ValueNotifier<double> _horizontalOffset;
 
@@ -143,8 +144,10 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           actionCount: actionCount,
         );
 
-        return Column(
-          children: [
+        return _withFrozenShadow(
+          frozenWidth: frozenWidth,
+          child: Column(
+            children: [
               header,
               Expanded(
                 child: widget.items.isEmpty
@@ -185,9 +188,59 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
                         },
                       ),
               ),
-          ],
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _withFrozenShadow({
+    required double frozenWidth,
+    required Widget child,
+  }) {
+    if (frozenWidth <= 0) return child;
+
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        child,
+        Positioned(
+          left: frozenWidth - 1,
+          top: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: ValueListenableBuilder<double>(
+              valueListenable: _horizontalOffset,
+              builder: (context, offset, child) {
+                return DecoratedBox(
+                  key: const ValueKey('frozen-columns-shadow'),
+                  decoration: BoxDecoration(
+                    boxShadow: offset > .5
+                        ? [
+                      const BoxShadow(
+                        color: Color(0x14000000), // ~8%
+                        blurRadius: 12,
+                        spreadRadius: -2, // âm để bóng không lem lên/xuống
+                        offset: Offset(4, 0),
+                      ),
+                      const BoxShadow(
+                        color: Color(0x1F000000), // ~12%
+                        blurRadius: 3,
+                        spreadRadius: -1,
+                        offset: Offset(1, 0),
+                      ),
+                          ]
+                        : null,
+                  ),
+                  child: child,
+                );
+              },
+              child: const SizedBox(width: 1),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
