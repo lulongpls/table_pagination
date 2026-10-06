@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
@@ -84,16 +85,24 @@ class FrozenColumnsTable<T> extends StatefulWidget {
 }
 
 class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
+  static const _pointerSignalAxisLockDuration = Duration(milliseconds: 120);
+  static const _verticalIntentThreshold = 12.0;
+
   late final ValueNotifier<double> _horizontalOffset;
+  Timer? _pointerSignalAxisLockTimer;
+  bool _isHorizontalPointerSignalLocked = false;
 
   @override
   void initState() {
     super.initState();
     _horizontalOffset = ValueNotifier(0);
+    _horizontalOffset.addListener(_lockPointerSignalToHorizontalAxis);
   }
 
   @override
   void dispose() {
+    _pointerSignalAxisLockTimer?.cancel();
+    _horizontalOffset.removeListener(_lockPointerSignalToHorizontalAxis);
     _horizontalOffset.dispose();
     super.dispose();
   }
@@ -153,6 +162,9 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
                 child: widget.items.isEmpty
                     ? widget.emptyBuilder
                     : ListView.builder(
+                        physics: _PointerSignalAxisScrollPhysics(
+                          isEnabled: () => !_isHorizontalPointerSignalLocked,
+                        ),
                         padding: widget.outterRowsPadding,
                         itemCount: widget.items.length,
                         itemBuilder: (context, index) {
@@ -172,6 +184,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
                               rowCellsBuilder: widget.rowCellsBuilder,
                               rowBuilder: widget.rowBuilder,
                               horizontalOffset: _horizontalOffset,
+                              onPointerSignalIntent: _handlePointerSignalIntent,
                               rowHeight: widget.rowHeight,
                               actions: widget.actions,
                               actionMode: widget.actionMode,
@@ -201,47 +214,82 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
   }) {
     if (frozenWidth <= 0) return child;
 
-    return Stack(
-      fit: StackFit.passthrough,
-      children: [
-        child,
-        Positioned(
-          left: frozenWidth - 1,
-          top: 0,
-          bottom: 0,
-          child: IgnorePointer(
-            child: ValueListenableBuilder<double>(
-              valueListenable: _horizontalOffset,
-              builder: (context, offset, child) {
-                return DecoratedBox(
-                  key: const ValueKey('frozen-columns-shadow'),
-                  decoration: BoxDecoration(
-                    boxShadow: offset > .5
-                        ? [
-                      const BoxShadow(
-                        color: Color(0x14000000), // ~8%
-                        blurRadius: 12,
-                        spreadRadius: -2, // âm để bóng không lem lên/xuống
-                        offset: Offset(4, 0),
-                      ),
-                      const BoxShadow(
-                        color: Color(0x1F000000), // ~12%
-                        blurRadius: 3,
-                        spreadRadius: -1,
-                        offset: Offset(1, 0),
-                      ),
-                          ]
-                        : null,
-                  ),
-                  child: child,
-                );
-              },
-              child: const SizedBox(width: 1),
+    return Listener(
+      onPointerSignal: _handlePointerSignal,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          child,
+          Positioned(
+            left: frozenWidth - 1,
+            top: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _horizontalOffset,
+                builder: (context, offset, child) {
+                  return DecoratedBox(
+                    key: const ValueKey('frozen-columns-shadow'),
+                    decoration: BoxDecoration(
+                      boxShadow: offset > .5
+                          ? [
+                              const BoxShadow(
+                                color: Color(0x14000000), // ~8%
+                                blurRadius: 12,
+                                spreadRadius:
+                                    -2, // âm để bóng không lem lên/xuống
+                                offset: Offset(4, 0),
+                              ),
+                              const BoxShadow(
+                                color: Color(0x1F000000), // ~12%
+                                blurRadius: 3,
+                                spreadRadius: -1,
+                                offset: Offset(1, 0),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: child,
+                  );
+                },
+                child: const SizedBox(width: 1),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  void _lockPointerSignalToHorizontalAxis() {
+    _isHorizontalPointerSignalLocked = true;
+    _pointerSignalAxisLockTimer?.cancel();
+    _pointerSignalAxisLockTimer = Timer(
+      _pointerSignalAxisLockDuration,
+      () => _isHorizontalPointerSignalLocked = false,
+    );
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (!_isHorizontalPointerSignalLocked || event is! PointerScrollEvent) {
+      return;
+    }
+
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
+  }
+
+  void _handlePointerSignalIntent(PointerScrollEvent event) {
+    final delta = event.scrollDelta;
+    if (delta.dx.abs() > delta.dy.abs()) {
+      _lockPointerSignalToHorizontalAxis();
+      return;
+    }
+
+    if (_isHorizontalPointerSignalLocked &&
+        delta.dy.abs() >= _verticalIntentThreshold) {
+      _pointerSignalAxisLockTimer?.cancel();
+      _isHorizontalPointerSignalLocked = false;
+    }
   }
 
   Widget _buildHeader(
@@ -288,7 +336,6 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(width: frozenWidth),
           ...headerCells.skip(frozenCount),
           if (headerSpacerWidth > 0) SizedBox(width: headerSpacerWidth),
           headerAction,
@@ -308,8 +355,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       contentWidth: contentWidth,
       frozenWidth: frozenWidth,
       offset: _horizontalOffset,
-      fixedBackgroundColor:
-          widget.headerDecoration?.color ?? Colors.transparent,
+      onPointerSignalIntent: _handlePointerSignalIntent,
       fixedChild: frozenCells,
       wrapper: (child) => DefaultTextStyle(
         style: headerStyle,
@@ -357,6 +403,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
     required this.rowCellsBuilder,
     required this.rowBuilder,
     required this.horizontalOffset,
+    required this.onPointerSignalIntent,
     required this.rowHeight,
     required this.actions,
     required this.actionMode,
@@ -380,6 +427,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
   final TableRowCellsBuilder<T> rowCellsBuilder;
   final TableBuiltRowBuilder rowBuilder;
   final ValueNotifier<double> horizontalOffset;
+  final ValueChanged<PointerScrollEvent> onPointerSignalIntent;
   final double rowHeight;
   final List<TableAction<T>> actions;
   final TableActionMode actionMode;
@@ -398,7 +446,6 @@ class _FrozenDataRow<T> extends StatefulWidget {
 class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
   late final ScrollController _scrollController;
   bool _isHovered = false;
-  bool _canPublishOffset = false;
 
   @override
   void initState() {
@@ -407,55 +454,12 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
       initialScrollOffset: widget.horizontalOffset.value,
       keepScrollOffset: false,
     );
-    _scrollController.addListener(_publishOffset);
-    widget.horizontalOffset.addListener(_syncOffset);
-    _scheduleInitialOffsetSync();
-  }
-
-  @override
-  void didUpdateWidget(covariant _FrozenDataRow<T> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.horizontalOffset != widget.horizontalOffset) {
-      oldWidget.horizontalOffset.removeListener(_syncOffset);
-      widget.horizontalOffset.addListener(_syncOffset);
-      _scheduleInitialOffsetSync();
-    }
   }
 
   @override
   void dispose() {
-    widget.horizontalOffset.removeListener(_syncOffset);
-    _scrollController
-      ..removeListener(_publishOffset)
-      ..dispose();
+    _scrollController.dispose();
     super.dispose();
-  }
-
-  void _publishOffset() {
-    if (!_canPublishOffset || !mounted || !_scrollController.hasClients) return;
-    final current = widget.horizontalOffset.value;
-    final next = _scrollController.offset;
-    if ((current - next).abs() > .5) {
-      widget.horizontalOffset.value = next;
-    }
-  }
-
-  void _syncOffset() {
-    if (!_scrollController.hasClients) return;
-    final max = _scrollController.position.maxScrollExtent;
-    final next = widget.horizontalOffset.value.clamp(0.0, max).toDouble();
-    if ((_scrollController.offset - next).abs() > .5) {
-      _scrollController.jumpTo(next);
-    }
-  }
-
-  void _scheduleInitialOffsetSync() {
-    _canPublishOffset = false;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _syncOffset();
-      _canPublishOffset = true;
-    });
   }
 
   @override
@@ -465,11 +469,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
     final frozen = Row(mainAxisSize: MainAxisSize.min, children: frozenCells);
     final scrolling = Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(width: widget.frozenWidth),
-        ...cells.skip(widget.frozenCount),
-        ..._buildActions(context),
-      ],
+      children: [...cells.skip(widget.frozenCount), ..._buildActions(context)],
     );
 
     final rowDecoration =
@@ -486,7 +486,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
       contentWidth: widget.contentWidth,
       frozenWidth: widget.frozenWidth,
       offset: widget.horizontalOffset,
-      fixedBackgroundColor: rowDecoration?.color ?? Colors.transparent,
+      onPointerSignalIntent: widget.onPointerSignalIntent,
       controller: _scrollController,
       fixedChild: frozen,
       wrapper: (child) => widget.rowHeight.isNaN
@@ -628,9 +628,9 @@ class _FrozenHorizontalViewport extends StatefulWidget {
     required this.contentWidth,
     required this.frozenWidth,
     required this.offset,
+    required this.onPointerSignalIntent,
     required this.child,
     required this.fixedChild,
-    required this.fixedBackgroundColor,
     this.controller,
     this.wrapper,
   });
@@ -639,9 +639,9 @@ class _FrozenHorizontalViewport extends StatefulWidget {
   final double contentWidth;
   final double frozenWidth;
   final ValueNotifier<double> offset;
+  final ValueChanged<PointerScrollEvent> onPointerSignalIntent;
   final Widget child;
   final Widget fixedChild;
-  final Color fixedBackgroundColor;
   final ScrollController? controller;
   final Widget Function(Widget child)? wrapper;
 
@@ -652,6 +652,8 @@ class _FrozenHorizontalViewport extends StatefulWidget {
 
 class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
   late final ScrollController _internalController;
+  bool _isSyncingOffset = false;
+  bool _acceptHorizontalPointerSignal = true;
 
   bool get _ownsController => widget.controller == null;
 
@@ -669,7 +671,9 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
   void didUpdateWidget(covariant _FrozenHorizontalViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller?.removeListener(_publishOffset);
+      (oldWidget.controller ?? _internalController).removeListener(
+        _publishOffset,
+      );
       _controller.addListener(_publishOffset);
     }
     if (oldWidget.offset != widget.offset) {
@@ -687,7 +691,7 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
   }
 
   void _publishOffset() {
-    if (!_controller.hasClients) return;
+    if (_isSyncingOffset || !_controller.hasClients) return;
     final current = widget.offset.value;
     final next = _controller.offset;
     if ((current - next).abs() > .5) widget.offset.value = next;
@@ -697,7 +701,25 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
     if (!_controller.hasClients) return;
     final max = _controller.position.maxScrollExtent;
     final next = widget.offset.value.clamp(0.0, max).toDouble();
-    if ((_controller.offset - next).abs() > .5) _controller.jumpTo(next);
+    if ((_controller.offset - next).abs() <= .5) return;
+
+    _isSyncingOffset = true;
+    try {
+      _controller.jumpTo(next);
+    } finally {
+      _isSyncingOffset = false;
+    }
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+
+    final delta = event.scrollDelta;
+    final isHorizontal = delta.dx.abs() > delta.dy.abs();
+    if (!isHorizontal) {
+      _acceptHorizontalPointerSignal = false;
+      scheduleMicrotask(() => _acceptHorizontalPointerSignal = true);
+    }
   }
 
   @override
@@ -707,10 +729,23 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
       children: [
         SizedBox(
           width: widget.viewportWidth,
-          child: SingleChildScrollView(
-            controller: _controller,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: widget.contentWidth, child: widget.child),
+          child: Padding(
+            padding: EdgeInsets.only(left: widget.frozenWidth),
+            child: SingleChildScrollView(
+              controller: _controller,
+              physics: _PointerSignalAxisScrollPhysics(
+                isEnabled: () => _acceptHorizontalPointerSignal,
+              ),
+              scrollDirection: Axis.horizontal,
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerSignal: _handlePointerSignal,
+                child: SizedBox(
+                  width: math.max(0, widget.contentWidth - widget.frozenWidth),
+                  child: widget.child,
+                ),
+              ),
+            ),
           ),
         ),
         if (widget.frozenWidth > 0)
@@ -719,15 +754,42 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
             top: 0,
             bottom: 0,
             width: widget.frozenWidth,
-            child: ColoredBox(
-              color: widget.fixedBackgroundColor,
-              child: ClipRect(child: widget.fixedChild),
-            ),
+            child: ClipRect(child: widget.fixedChild),
           ),
       ],
     );
+    final pointerAwareViewport = Listener(
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent) {
+          widget.onPointerSignalIntent(event);
+        }
+      },
+      child: viewport,
+    );
 
-    return widget.wrapper?.call(viewport) ?? viewport;
+    return widget.wrapper?.call(pointerAwareViewport) ?? pointerAwareViewport;
+  }
+}
+
+class _PointerSignalAxisScrollPhysics extends ScrollPhysics {
+  const _PointerSignalAxisScrollPhysics({
+    required this.isEnabled,
+    super.parent,
+  });
+
+  final bool Function() isEnabled;
+
+  @override
+  bool shouldAcceptUserOffset(ScrollMetrics position) {
+    return isEnabled() && super.shouldAcceptUserOffset(position);
+  }
+
+  @override
+  _PointerSignalAxisScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return _PointerSignalAxisScrollPhysics(
+      isEnabled: isEnabled,
+      parent: buildParent(ancestor),
+    );
   }
 }
 

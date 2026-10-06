@@ -751,6 +751,27 @@ void main() {
       headerController.jumpTo(100);
       await tester.pump();
 
+      final horizontalControllers = tester
+          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .map((scrollView) => scrollView.controller!)
+          .toList();
+      expect(horizontalControllers, hasLength(2));
+      expect(
+        horizontalControllers.every(
+          (controller) => (controller.offset - 100).abs() < .1,
+        ),
+        isTrue,
+      );
+
+      horizontalControllers.last.jumpTo(150);
+      await tester.pump();
+      expect(
+        horizontalControllers.every(
+          (controller) => (controller.offset - 150).abs() < .1,
+        ),
+        isTrue,
+      );
+
       expect(
         tester.getCenter(find.text('First')).dx,
         closeTo(firstBefore, 0.1),
@@ -764,6 +785,181 @@ void main() {
       await tester.tap(find.text('42').last);
       expect(tappedItem, 42);
       expect(tappedIndex, 0);
+
+      await cubit.close();
+    });
+
+    testWidgets('frozen cells share the animated row background on hover', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 400,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                rowDecorationBuilder: (context, item, index, isHovered) =>
+                    BoxDecoration(
+                      color: isHovered ? Colors.blue : Colors.white,
+                    ),
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 120,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 240,
+                    valueGetter: (item) => item + 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final frozenCell = find.text('42');
+      final rowBackground = find.ancestor(
+        of: frozenCell,
+        matching: find.byType(AnimatedContainer),
+      );
+      expect(rowBackground, findsOneWidget);
+      final frozenCellColoredBoxes = find.ancestor(
+        of: frozenCell,
+        matching: find.byType(ColoredBox),
+      );
+      expect(
+        tester
+            .widgetList<ColoredBox>(frozenCellColoredBoxes)
+            .every((box) => box.color == Colors.transparent),
+        isTrue,
+      );
+      expect(
+        (tester.widget<AnimatedContainer>(rowBackground).decoration
+                as BoxDecoration)
+            .color,
+        Colors.white,
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(frozenCell));
+      await tester.pump();
+
+      expect(
+        (tester.widget<AnimatedContainer>(rowBackground).decoration
+                as BoxDecoration)
+            .color,
+        Colors.blue,
+      );
+      expect(
+        tester
+            .widgetList<ColoredBox>(frozenCellColoredBoxes)
+            .every((box) => box.color == Colors.transparent),
+        isTrue,
+      );
+
+      await mouse.removePointer();
+      await cubit.close();
+    });
+
+    testWidgets('horizontal trackpad gestures do not move the vertical list', (
+      tester,
+    ) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        pageSize: 20,
+        fetcher: (_) async => PagedResult(
+          items: List.generate(20, (index) => index),
+          totalCount: 20,
+        ),
+      );
+      await cubit.fetchFirstPage();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 300,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                rowHeight: 48,
+                headerRowHeight: 48,
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 120,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 360,
+                    valueGetter: (item) => item + 100,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final verticalPosition = tester
+          .stateList<ScrollableState>(find.byType(Scrollable))
+          .map((state) => state.position)
+          .firstWhere((position) => position.axis == Axis.vertical);
+      final firstRowHorizontalController = tester
+          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .elementAt(1)
+          .controller!;
+      expect(verticalPosition.pixels, 0);
+      expect(firstRowHorizontalController.offset, 0);
+
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(find.text('100')),
+          scrollDelta: const Offset(80, 4),
+        ),
+      );
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(find.text('100')),
+          scrollDelta: const Offset(0, 4),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(firstRowHorizontalController.offset, greaterThan(0));
+      expect(verticalPosition.pixels, 0);
+
+      final horizontalOffsetBeforeVerticalScroll =
+          firstRowHorizontalController.offset;
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(find.text('0')),
+          scrollDelta: const Offset(2, 40),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(verticalPosition.pixels, greaterThan(0));
+      expect(
+        firstRowHorizontalController.offset,
+        horizontalOffsetBeforeVerticalScroll,
+      );
 
       await cubit.close();
     });
