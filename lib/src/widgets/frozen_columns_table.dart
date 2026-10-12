@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
 
@@ -728,38 +729,34 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
 
   @override
   Widget build(BuildContext context) {
-    final viewport = Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        SizedBox(
-          width: widget.viewportWidth,
-          child: Padding(
-            padding: EdgeInsets.only(left: widget.frozenWidth),
-            child: SingleChildScrollView(
-              controller: _controller,
-              physics: _PointerSignalAxisScrollPhysics(
-                isEnabled: () => _acceptHorizontalPointerSignal,
-              ),
-              scrollDirection: Axis.horizontal,
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerSignal: _handlePointerSignal,
-                child: SizedBox(
-                  width: math.max(0, widget.contentWidth - widget.frozenWidth),
-                  child: widget.child,
-                ),
-              ),
+    final scrolling = SizedBox(
+      width: widget.viewportWidth,
+      child: Padding(
+        padding: EdgeInsets.only(left: widget.frozenWidth),
+        child: SingleChildScrollView(
+          controller: _controller,
+          physics: _PointerSignalAxisScrollPhysics(
+            isEnabled: () => _acceptHorizontalPointerSignal,
+          ),
+          scrollDirection: Axis.horizontal,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerSignal: _handlePointerSignal,
+            child: SizedBox(
+              width: math.max(0, widget.contentWidth - widget.frozenWidth),
+              child: widget.child,
             ),
           ),
         ),
-        if (widget.frozenWidth > 0)
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: widget.frozenWidth,
-            child: ClipRect(child: widget.fixedChild),
-          ),
+      ),
+    );
+    // The row is as tall as its tallest cell, frozen or scrolling, so a tall
+    // frozen cell (tags, two lines...) never overflows.
+    final viewport = _FrozenRowLayout(
+      frozenWidth: widget.frozenWidth,
+      children: [
+        scrolling,
+        if (widget.frozenWidth > 0) ClipRect(child: widget.fixedChild),
       ],
     );
     final pointerAwareViewport = Listener(
@@ -817,5 +814,133 @@ class _ActionMenuItem<T> extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Lays out `[scrolling, frozen?]` on top of each other with the same height:
+/// the max of both natural heights (and at least the incoming min height).
+class _FrozenRowLayout extends MultiChildRenderObjectWidget {
+  const _FrozenRowLayout({required this.frozenWidth, required super.children});
+
+  final double frozenWidth;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderFrozenRow(frozenWidth: frozenWidth);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderFrozenRow renderObject,
+  ) {
+    renderObject.frozenWidth = frozenWidth;
+  }
+}
+
+class _FrozenRowParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderFrozenRow extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FrozenRowParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FrozenRowParentData> {
+  _RenderFrozenRow({required double frozenWidth})
+    // ignore: prefer_initializing_formals
+    : _frozenWidth = frozenWidth;
+
+  double _frozenWidth;
+
+  set frozenWidth(double value) {
+    if (_frozenWidth == value) return;
+    _frozenWidth = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FrozenRowParentData) {
+      child.parentData = _FrozenRowParentData();
+    }
+  }
+
+  RenderBox? get _frozen {
+    final scrolling = firstChild;
+    return scrolling == null ? null : childAfter(scrolling);
+  }
+
+  @override
+  void performLayout() {
+    final scrolling = firstChild;
+    if (scrolling == null) {
+      size = constraints.smallest;
+      return;
+    }
+    final frozen = _frozen;
+    // Pass 1: natural heights (width is loose for the scrolling layer, as the
+    // old Stack did, and exactly the frozen width for the frozen layer).
+    scrolling.layout(
+      BoxConstraints(maxWidth: constraints.maxWidth),
+      parentUsesSize: true,
+    );
+    var height = scrolling.size.height;
+    if (frozen != null) {
+      frozen.layout(
+        BoxConstraints(minWidth: _frozenWidth, maxWidth: _frozenWidth),
+        parentUsesSize: true,
+      );
+      height = math.max(height, frozen.size.height);
+    }
+    height = math.max(height, constraints.minHeight);
+
+    // Second pass: every layer gets the final row height.
+    scrolling.layout(
+      BoxConstraints.tightFor(width: scrolling.size.width, height: height),
+      parentUsesSize: true,
+    );
+    frozen?.layout(
+      BoxConstraints.tightFor(width: _frozenWidth, height: height),
+      parentUsesSize: true,
+    );
+
+    for (final child in <RenderBox?>[scrolling, frozen]) {
+      (child?.parentData as _FrozenRowParentData?)?.offset = Offset.zero;
+    }
+    size = constraints.constrain(Size(scrolling.size.width, height));
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) => 0;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    final scrolling = firstChild;
+    if (scrolling == null) return constraints.smallest;
+    final scrollingSize = scrolling.getDryLayout(
+      BoxConstraints(maxWidth: constraints.maxWidth),
+    );
+    var height = scrollingSize.height;
+    final frozen = _frozen;
+    if (frozen != null) {
+      height = math.max(
+        height,
+        frozen
+            .getDryLayout(
+              BoxConstraints(minWidth: _frozenWidth, maxWidth: _frozenWidth),
+            )
+            .height,
+      );
+    }
+    return constraints.constrain(Size(scrollingSize.width, height));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    defaultPaint(context, offset);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    // Frozen layer is painted last, so it must be hit first.
+    return defaultHitTestChildren(result, position: position);
   }
 }

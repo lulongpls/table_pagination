@@ -718,6 +718,54 @@ void main() {
       await cubit.close();
     });
 
+    testWidgets('a tall frozen cell grows the row instead of overflowing', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 500,
+              height: 600,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                columns: [
+                  widgetColumn<int>(
+                    name: 'tall',
+                    label: 'Tall',
+                    width: 120,
+                    cellBuilder: (item, _) => SizedBox(
+                      key: ValueKey<String>('tall-$item'),
+                      height: 130,
+                    ),
+                  ),
+                  textColumn<int>(
+                    name: 'short',
+                    label: 'Short',
+                    width: 200,
+                    valueGetter: (item) => item,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final tall = find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith('tall-'),
+      );
+      expect(tall, findsWidgets);
+      expect(tester.getSize(tall.first).height, 130);
+    });
+
     testWidgets('frozen columns render without changing row callbacks', (
       tester,
     ) async {
