@@ -587,13 +587,17 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
   }
 
   Widget _buildActionGroup(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SizedBox(
       width: widget.actionWidth,
       child: PopupMenuButton<int>(
         padding: EdgeInsets.zero,
         icon: widget.actionIcon ?? const Icon(Icons.more_horiz),
         elevation: 2,
-        color: Colors.white,
+        color: theme.brightness == Brightness.dark
+            ? theme.colorScheme.surface
+            : Colors.white,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         menuPadding: const EdgeInsets.symmetric(vertical: 4),

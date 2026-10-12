@@ -679,6 +679,45 @@ void main() {
       await cubit.close();
     });
 
+    testWidgets('secondary click uses the dark theme surface for its menu', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: GenericTable<int>.withCubit(
+              cubit: cubit,
+              columns: columns(),
+              actions: [
+                TableAction<int>(
+                  name: 'Delete',
+                  icon: const Icon(Icons.delete),
+                  onTap: (_, _) {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('42'), buttons: kSecondaryMouseButton);
+      await tester.pumpAndSettle();
+
+      final darkSurface = ThemeData.dark().colorScheme.surface;
+      expect(
+        tester
+            .widgetList<Material>(find.byType(Material))
+            .any((material) => material.color == darkSurface),
+        isTrue,
+      );
+
+      await cubit.close();
+    });
+
     testWidgets('frozen columns render without changing row callbacks', (
       tester,
     ) async {

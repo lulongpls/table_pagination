@@ -743,6 +743,8 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Listener(
       onPointerDown: (event) {
         if (event.buttons & kSecondaryMouseButton == 0) return;
@@ -759,7 +761,9 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
               Offset.zero & overlay.size,
             ),
             elevation: 2,
-            color: Colors.white,
+            color: theme.brightness == Brightness.dark
+                ? theme.colorScheme.surface
+                : Colors.white,
             surfaceTintColor: Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
