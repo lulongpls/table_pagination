@@ -766,6 +766,57 @@ void main() {
       expect(tester.getSize(tall.first).height, 130);
     });
 
+    testWidgets('frozen cells with Expanded children still lay out', (
+      tester,
+    ) async {
+      final cubit = await createCubit();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 500,
+              height: 600,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                frozenColumnCount: 1,
+                columns: [
+                  widgetColumn<int>(
+                    name: 'flex',
+                    label: 'Flex',
+                    width: 150,
+                    cellBuilder: (item, _) => Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(child: Text('flex-$item')),
+                              const Text('sub'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  textColumn<int>(
+                    name: 'short',
+                    label: 'Short',
+                    width: 200,
+                    valueGetter: (item) => item,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('flex-'), findsWidgets);
+    });
+
     testWidgets('frozen columns render without changing row callbacks', (
       tester,
     ) async {

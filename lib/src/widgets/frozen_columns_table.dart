@@ -884,11 +884,11 @@ class _RenderFrozenRow extends RenderBox
     );
     var height = scrolling.size.height;
     if (frozen != null) {
-      frozen.layout(
-        BoxConstraints(minWidth: _frozenWidth, maxWidth: _frozenWidth),
-        parentUsesSize: true,
-      );
-      height = math.max(height, frozen.size.height);
+      // Measure the frozen layer by intrinsic height, never with an unbounded
+      // max height: cells may contain Expanded/Flexible children that need a
+      // bounded height. If a cell does not support intrinsics, the scrolling
+      // height is used (the previous behavior).
+      height = math.max(height, _frozenIntrinsicHeight(frozen));
     }
     height = math.max(height, constraints.minHeight);
 
@@ -908,6 +908,14 @@ class _RenderFrozenRow extends RenderBox
     size = constraints.constrain(Size(scrolling.size.width, height));
   }
 
+  double _frozenIntrinsicHeight(RenderBox frozen) {
+    try {
+      return frozen.getMaxIntrinsicHeight(_frozenWidth);
+    } on Object {
+      return 0;
+    }
+  }
+
   @override
   double computeMinIntrinsicHeight(double width) => 0;
 
@@ -921,14 +929,7 @@ class _RenderFrozenRow extends RenderBox
     var height = scrollingSize.height;
     final frozen = _frozen;
     if (frozen != null) {
-      height = math.max(
-        height,
-        frozen
-            .getDryLayout(
-              BoxConstraints(minWidth: _frozenWidth, maxWidth: _frozenWidth),
-            )
-            .height,
-      );
+      height = math.max(height, _frozenIntrinsicHeight(frozen));
     }
     return constraints.constrain(Size(scrollingSize.width, height));
   }
