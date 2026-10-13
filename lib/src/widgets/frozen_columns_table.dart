@@ -893,8 +893,15 @@ class _RenderFrozenRow extends RenderBox
     height = math.max(height, constraints.minHeight);
 
     // Second pass: every layer gets the final row height.
+    // Not tight on height: a tight constraint would make the scrolling layer
+    // a relayout boundary, so a cell that grows later (expand/collapse, edit)
+    // would overflow instead of growing the row.
     scrolling.layout(
-      BoxConstraints.tightFor(width: scrolling.size.width, height: height),
+      BoxConstraints(
+        minWidth: scrolling.size.width,
+        maxWidth: scrolling.size.width,
+        minHeight: height,
+      ),
       parentUsesSize: true,
     );
     frozen?.layout(
