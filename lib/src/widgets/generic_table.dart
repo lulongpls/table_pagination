@@ -14,6 +14,7 @@ import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
 import 'package:table_pagination/src/widgets/pagination_footer.dart';
 import 'package:table_pagination/src/widgets/frozen_columns_table.dart';
+import 'package:table_pagination/src/widgets/table_action_menu_item.dart';
 
 typedef TableStateWidgetBuilder<T> =
     Widget Function(BuildContext context, GenericTableState<T> state);
@@ -86,6 +87,7 @@ class GenericTable<T> extends StatefulWidget {
     this.actionsColumnWidth = double.nan,
     this.actionsColumnTitle,
     this.frozenColumnCount = 0,
+    this.autoHeight = false,
   }) : cubit = null,
        assert(frozenColumnCount >= 0);
 
@@ -126,6 +128,7 @@ class GenericTable<T> extends StatefulWidget {
     this.actionsColumnWidth = double.nan,
     this.actionsColumnTitle,
     this.frozenColumnCount = 0,
+    this.autoHeight = false,
   }) : fetcher = null,
        mode = TableMode.pagination,
        sortMode = TableSortMode.online,
@@ -198,6 +201,11 @@ class GenericTable<T> extends StatefulWidget {
   /// Number of columns frozen from the left while the table scrolls
   /// horizontally.
   final int frozenColumnCount;
+
+  /// Height follows the rows (no inner vertical scroll). Needs a parent with
+  /// unbounded height (scroll view / min-size column). Takes precedence over
+  /// [shrinkWrapRows] and [stickyFooter].
+  final bool autoHeight;
 
   /// When enabled, the footer follows short lists but stays pinned below the
   /// scrollable table when the rows exceed the available height.
@@ -330,16 +338,24 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
         _syncLoadingNotifiers(state);
 
         if (state.isFirstLoad) {
-          return widget.loadingBuilder?.call(context, state) ??
+          final loading =
+              widget.loadingBuilder?.call(context, state) ??
               const Center(child: CircularProgressIndicator());
+          return widget.autoHeight
+              ? SizedBox(height: 120, child: loading)
+              : loading;
         }
 
         if (state.isFailure && !state.canShowRows) {
-          return widget.errorBuilder?.call(context, state) ??
+          final error =
+              widget.errorBuilder?.call(context, state) ??
               _DefaultErrorState(
                 message: state.errorMessage,
                 onRetry: _cubit.reload,
               );
+          return widget.autoHeight
+              ? SizedBox(height: 160, child: error)
+              : error;
         }
 
         final table = NotificationListener<ScrollNotification>(
@@ -347,7 +363,9 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
           child: _buildTable(context, state),
         );
 
-        final tableBody = widget.shrinkWrapRows
+        final tableBody = widget.autoHeight
+            ? table
+            : widget.shrinkWrapRows
             ? SizedBox(height: _shrinkWrapHeight(state), child: table)
             : widget.stickyFooter
             ? Flexible(
@@ -362,6 +380,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
         // and stretch to the viewport instead of inheriting an intrinsic
         // width from the horizontally scrollable content.
         return Column(
+          mainAxisSize: widget.autoHeight ? MainAxisSize.min : MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [tableBody, _buildFooter(context, state)],
         );
@@ -392,6 +411,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
               column.resolveWidth(defaultWidth),
           ],
           frozenColumnCount: widget.frozenColumnCount,
+          autoHeight: widget.autoHeight,
           rowHeight: widget.rowHeight,
           headerRowHeight: widget.headerRowHeight,
           actions: _actionsEnabled ? widget.actions : const [],
@@ -771,13 +791,7 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
             menuPadding: const EdgeInsets.symmetric(vertical: 4),
             items: [
               for (final action in actions)
-                PopupMenuItem<TableAction<T>>(
-                  value: action,
-                  enabled: action.isEnabled(item, rowIndex),
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: _TableActionMenuItem(action: action),
-                ),
+                _buildActionMenuItem(action, theme.brightness),
             ],
           ).then((action) {
             if (action == null || !action.isEnabled(item, rowIndex)) {
@@ -790,27 +804,23 @@ class _TableContextMenuRegion<T> extends StatelessWidget {
       child: child,
     );
   }
-}
 
-class _TableActionMenuItem<T> extends StatelessWidget {
-  const _TableActionMenuItem({required this.action});
+  PopupMenuItem<TableAction<T>> _buildActionMenuItem(
+    TableAction<T> action,
+    Brightness brightness,
+  ) {
+    final isEnabled = action.isEnabled(item, rowIndex);
 
-  final TableAction<T> action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(width: 18, height: 18, child: FittedBox(child: action.icon)),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            action.name,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
+    return PopupMenuItem<TableAction<T>>(
+      value: action,
+      enabled: isEnabled,
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: TableActionMenuItem<T>(
+        action: action,
+        brightness: brightness,
+        isEnabled: isEnabled,
+      ),
     );
   }
 }

@@ -4,8 +4,11 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
+import 'package:table_pagination/src/widgets/table_action_menu_item.dart';
+import 'package:table_pagination/src/widgets/table_horizontal_sync.dart';
 
 typedef TableHeaderCellBuilder =
     Widget Function(BuildContext context, int index);
@@ -51,6 +54,7 @@ class FrozenColumnsTable<T> extends StatefulWidget {
     required this.elementsPadding,
     required this.outterHeaderPadding,
     required this.outterRowsPadding,
+    this.autoHeight = false,
   });
 
   final List<T> items;
@@ -80,6 +84,11 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   final EdgeInsets? elementsPadding;
   final EdgeInsets? outterHeaderPadding;
   final EdgeInsets? outterRowsPadding;
+
+  /// Size the table to its rows (no inner vertical scroll) instead of
+  /// filling the available height. Requires an unbounded-height parent such
+  /// as a scroll view or a min-size column.
+  final bool autoHeight;
 
   @override
   State<FrozenColumnsTable<T>> createState() => _FrozenColumnsTableState<T>();
@@ -154,59 +163,80 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           actionCount: actionCount,
         );
 
-        return _withFrozenShadow(
-          frozenWidth: frozenWidth,
-          child: Column(
-            children: [
-              header,
-              Expanded(
-                child: widget.items.isEmpty
-                    ? widget.emptyBuilder
-                    : ListView.builder(
-                        physics: _PointerSignalAxisScrollPhysics(
-                          isEnabled: () => !_isHorizontalPointerSignalLocked,
+        return TableScrollScope(
+          offset: _horizontalOffset,
+          contentWidth: contentWidth,
+          viewportWidth: viewportWidth,
+          child: _withFrozenShadow(
+            frozenWidth: frozenWidth,
+            child: Column(
+              mainAxisSize: widget.autoHeight
+                  ? MainAxisSize.min
+                  : MainAxisSize.max,
+              children: [
+                header,
+                _bodyHolder(
+                  child: widget.items.isEmpty
+                      ? widget.emptyBuilder
+                      : ListView.builder(
+                          shrinkWrap: widget.autoHeight,
+                          physics: widget.autoHeight
+                              ? const NeverScrollableScrollPhysics()
+                              : _PointerSignalAxisScrollPhysics(
+                                  isEnabled: () =>
+                                      !_isHorizontalPointerSignalLocked,
+                                ),
+                          padding: widget.outterRowsPadding,
+                          itemCount: widget.items.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding:
+                                  widget.elementsPadding ??
+                                  const EdgeInsets.symmetric(vertical: 5),
+                              child: _FrozenDataRow<T>(
+                                item: widget.items[index],
+                                rowIndex: index,
+                                viewportWidth: viewportWidth,
+                                contentWidth: contentWidth,
+                                frozenWidth: frozenWidth,
+                                frozenCount: frozenCount,
+                                columnCount: widget.columnCount,
+                                columnWidths: widget.columnWidths,
+                                rowCellsBuilder: widget.rowCellsBuilder,
+                                rowBuilder: widget.rowBuilder,
+                                horizontalOffset: _horizontalOffset,
+                                onPointerSignalIntent:
+                                    _handlePointerSignalIntent,
+                                rowHeight: widget.rowHeight,
+                                actions: widget.actions,
+                                actionMode: widget.actionMode,
+                                actionIcon: widget.actionIcon,
+                                actionWidth: actionWidth,
+                                addSpacerToActions: widget.addSpacerToActions,
+                                onRowTap: widget.onRowTap,
+                                rowDecorationBuilder:
+                                    widget.rowDecorationBuilder,
+                                rowDecoration: widget.rowDecoration,
+                                innerRowElementsPadding:
+                                    widget.innerRowElementsPadding,
+                              ),
+                            );
+                          },
                         ),
-                        padding: widget.outterRowsPadding,
-                        itemCount: widget.items.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding:
-                                widget.elementsPadding ??
-                                const EdgeInsets.symmetric(vertical: 5),
-                            child: _FrozenDataRow<T>(
-                              item: widget.items[index],
-                              rowIndex: index,
-                              viewportWidth: viewportWidth,
-                              contentWidth: contentWidth,
-                              frozenWidth: frozenWidth,
-                              frozenCount: frozenCount,
-                              columnCount: widget.columnCount,
-                              columnWidths: widget.columnWidths,
-                              rowCellsBuilder: widget.rowCellsBuilder,
-                              rowBuilder: widget.rowBuilder,
-                              horizontalOffset: _horizontalOffset,
-                              onPointerSignalIntent: _handlePointerSignalIntent,
-                              rowHeight: widget.rowHeight,
-                              actions: widget.actions,
-                              actionMode: widget.actionMode,
-                              actionIcon: widget.actionIcon,
-                              actionWidth: actionWidth,
-                              addSpacerToActions: widget.addSpacerToActions,
-                              onRowTap: widget.onRowTap,
-                              rowDecorationBuilder: widget.rowDecorationBuilder,
-                              rowDecoration: widget.rowDecoration,
-                              innerRowElementsPadding:
-                                  widget.innerRowElementsPadding,
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
     );
+  }
+
+  /// Fills the remaining height, or (auto height) takes its natural height.
+  Widget _bodyHolder({required Widget child}) {
+    if (!widget.autoHeight) return Expanded(child: child);
+    if (widget.items.isEmpty) return SizedBox(height: 96, child: child);
+    return child;
   }
 
   Widget _withFrozenShadow({
@@ -611,17 +641,25 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
         },
         itemBuilder: (context) => [
           for (var index = 0; index < widget.actions.length; index++)
-            PopupMenuItem<int>(
-              value: index,
-              enabled: widget.actions[index].isEnabled(
-                widget.item,
-                widget.rowIndex,
-              ),
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: _ActionMenuItem(action: widget.actions[index]),
-            ),
+            _buildActionMenuItem(index, theme.brightness),
         ],
+      ),
+    );
+  }
+
+  PopupMenuItem<int> _buildActionMenuItem(int index, Brightness brightness) {
+    final action = widget.actions[index];
+    final isEnabled = action.isEnabled(widget.item, widget.rowIndex);
+
+    return PopupMenuItem<int>(
+      value: index,
+      enabled: isEnabled,
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: TableActionMenuItem<T>(
+        action: action,
+        brightness: brightness,
+        isEnabled: isEnabled,
       ),
     );
   }
@@ -661,6 +699,12 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
   bool _acceptHorizontalPointerSignal = true;
 
   bool get _ownsController => widget.controller == null;
+
+  bool get _isShiftPressed => HardwareKeyboard.instance.logicalKeysPressed.any(
+    (key) =>
+        key == LogicalKeyboardKey.shiftLeft ||
+        key == LogicalKeyboardKey.shiftRight,
+  );
 
   ScrollController get _controller => widget.controller ?? _internalController;
 
@@ -720,7 +764,11 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
     if (event is! PointerScrollEvent) return;
 
     final delta = event.scrollDelta;
-    final isHorizontal = delta.dx.abs() > delta.dy.abs();
+    // Mouse wheel + Shift: Scrollable flips the axes, so the wheel (dy) drives
+    // the horizontal scroll view. Do not treat it as a vertical gesture.
+    final isShiftWheel =
+        event.kind == PointerDeviceKind.mouse && _isShiftPressed;
+    final isHorizontal = delta.dx.abs() > delta.dy.abs() || isShiftWheel;
     if (!isHorizontal) {
       _acceptHorizontalPointerSignal = false;
       scheduleMicrotask(() => _acceptHorizontalPointerSignal = true);
@@ -733,18 +781,29 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
       width: widget.viewportWidth,
       child: Padding(
         padding: EdgeInsets.only(left: widget.frozenWidth),
-        child: SingleChildScrollView(
-          controller: _controller,
-          physics: _PointerSignalAxisScrollPhysics(
-            isEnabled: () => _acceptHorizontalPointerSignal,
+        // Desktop browsers: allow dragging the table with the mouse (the
+        // default behavior only accepts touch/trackpad).
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(
+            scrollbars: false,
+            dragDevices: <PointerDeviceKind>{
+              ...ScrollConfiguration.of(context).dragDevices,
+              PointerDeviceKind.mouse,
+            },
           ),
-          scrollDirection: Axis.horizontal,
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerSignal: _handlePointerSignal,
-            child: SizedBox(
-              width: math.max(0, widget.contentWidth - widget.frozenWidth),
-              child: widget.child,
+          child: SingleChildScrollView(
+            controller: _controller,
+            physics: _PointerSignalAxisScrollPhysics(
+              isEnabled: () => _acceptHorizontalPointerSignal,
+            ),
+            scrollDirection: Axis.horizontal,
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerSignal: _handlePointerSignal,
+              child: SizedBox(
+                width: math.max(0, widget.contentWidth - widget.frozenWidth),
+                child: widget.child,
+              ),
             ),
           ),
         ),
@@ -790,29 +849,6 @@ class _PointerSignalAxisScrollPhysics extends ScrollPhysics {
     return _PointerSignalAxisScrollPhysics(
       isEnabled: isEnabled,
       parent: buildParent(ancestor),
-    );
-  }
-}
-
-class _ActionMenuItem<T> extends StatelessWidget {
-  const _ActionMenuItem({required this.action});
-
-  final TableAction<T> action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(width: 18, height: 18, child: FittedBox(child: action.icon)),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            action.name,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
     );
   }
 }

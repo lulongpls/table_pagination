@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:table_pagination/table_pagination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -672,6 +673,25 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Delete'), findsOneWidget);
+      final lightMenuItem = find.ancestor(
+        of: find.text('Delete'),
+        matching: find.byType(PopupMenuItem<TableAction<int>>),
+      );
+      final lightMenuIcon = tester.widget<ColorFiltered>(
+        find.descendant(
+          of: lightMenuItem,
+          matching: find.byType(ColorFiltered),
+        ),
+      );
+      expect(
+        lightMenuIcon.colorFilter,
+        const ColorFilter.mode(Colors.black87, BlendMode.srcIn),
+      );
+      expect(
+        tester.widget<Text>(find.text('Delete')).style?.color,
+        Colors.black87,
+      );
+
       await tester.tap(find.text('Delete'));
       expect(receivedItem, 42);
       expect(receivedIndex, 0);
@@ -694,7 +714,7 @@ void main() {
               actions: [
                 TableAction<int>(
                   name: 'Delete',
-                  icon: const Icon(Icons.delete),
+                  icon: const Icon(Icons.delete, color: Colors.red),
                   onTap: (_, _) {},
                 ),
               ],
@@ -713,6 +733,21 @@ void main() {
             .widgetList<Material>(find.byType(Material))
             .any((material) => material.color == darkSurface),
         isTrue,
+      );
+      final darkMenuItem = find.ancestor(
+        of: find.text('Delete'),
+        matching: find.byType(PopupMenuItem<TableAction<int>>),
+      );
+      final darkMenuIcon = tester.widget<ColorFiltered>(
+        find.descendant(of: darkMenuItem, matching: find.byType(ColorFiltered)),
+      );
+      expect(
+        darkMenuIcon.colorFilter,
+        const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+      );
+      expect(
+        tester.widget<Text>(find.text('Delete')).style?.color,
+        Colors.white,
       );
 
       await cubit.close();
@@ -1099,6 +1134,208 @@ void main() {
         horizontalOffsetBeforeVerticalScroll,
       );
 
+      await cubit.close();
+    });
+
+    testWidgets('mouse drag and shift+wheel scroll the table horizontally', (
+      tester,
+    ) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        pageSize: 5,
+        fetcher: (_) async => PagedResult(
+          items: List.generate(5, (index) => index),
+          totalCount: 5,
+        ),
+      );
+      await cubit.fetchFirstPage();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 300,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                rowHeight: 48,
+                headerRowHeight: 48,
+                columns: [
+                  textColumn<int>(
+                    name: 'first',
+                    label: 'First',
+                    width: 200,
+                    valueGetter: (item) => item,
+                  ),
+                  textColumn<int>(
+                    name: 'second',
+                    label: 'Second',
+                    width: 400,
+                    valueGetter: (item) => item + 100,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final controller = tester
+          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .elementAt(1)
+          .controller!;
+      expect(controller.offset, 0);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('0')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-120, 0));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(controller.offset, greaterThan(0));
+
+      final afterDrag = controller.offset;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          kind: PointerDeviceKind.mouse,
+          position: tester.getCenter(find.text('100')),
+          scrollDelta: const Offset(0, 40),
+        ),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(controller.offset, greaterThan(afterDrag));
+
+      await cubit.close();
+    });
+
+    testWidgets('TableHorizontalSync follows the table horizontal scroll', (
+      tester,
+    ) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        pageSize: 2,
+        fetcher: (_) async => const PagedResult(items: [1, 2], totalCount: 2),
+      );
+      await cubit.fetchFirstPage();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 300,
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                rowBuilder: (context, item, index, row, hovered) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    row,
+                    if (index == 0)
+                      const TableHorizontalSync(
+                        child: SizedBox(
+                          key: ValueKey('detail'),
+                          height: 20,
+                          width: double.infinity,
+                        ),
+                      ),
+                  ],
+                ),
+                columns: [
+                  textColumn<int>(
+                    name: 'a',
+                    label: 'A',
+                    width: 600,
+                    valueGetter: (item) => item,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final before = tester.getTopLeft(find.byKey(const ValueKey('detail'))).dx;
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('2')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-100, 0));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      final after = tester.getTopLeft(find.byKey(const ValueKey('detail'))).dx;
+      expect(after, lessThan(before));
+
+      // Dragging the panel itself scrolls the table back.
+      final panel = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('detail'))),
+        kind: PointerDeviceKind.mouse,
+      );
+      await panel.moveBy(const Offset(60, 0));
+      await panel.up();
+      await tester.pumpAndSettle();
+      final dragged = tester
+          .getTopLeft(find.byKey(const ValueKey('detail')))
+          .dx;
+      expect(dragged, greaterThan(after));
+
+      // Horizontal wheel over the panel scrolls the table forward.
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          kind: PointerDeviceKind.mouse,
+          position: tester.getCenter(find.byKey(const ValueKey('detail'))),
+          scrollDelta: const Offset(40, 0),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('detail'))).dx,
+        lessThan(dragged),
+      );
+      await cubit.close();
+    });
+
+    testWidgets('autoHeight sizes the table to its rows', (tester) async {
+      final cubit = GenericTableCubit<int>(
+        autoFetchOnCreate: false,
+        pageSize: 3,
+        fetcher: (_) async =>
+            const PagedResult(items: [1, 2, 3], totalCount: 3),
+      );
+      await cubit.fetchFirstPage();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: GenericTable<int>.withCubit(
+                cubit: cubit,
+                autoHeight: true,
+                rowHeight: 40,
+                headerRowHeight: 30,
+                innerRowElementsPadding: EdgeInsets.zero,
+                elementsPadding: EdgeInsets.zero,
+                footerBuilder: (context, state, cubit) =>
+                    const SizedBox.shrink(),
+                columns: [
+                  textColumn<int>(
+                    name: 'a',
+                    label: 'A',
+                    width: 200,
+                    valueGetter: (item) => item,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(find.byType(GenericTable<int>)).height, 150);
       await cubit.close();
     });
 

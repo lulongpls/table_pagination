@@ -11,3 +11,4 @@ export 'src/utils/table_helpers.dart';
 export 'src/widgets/generic_table.dart';
 export 'src/widgets/pagination_footer.dart';
 export 'src/widgets/sortable_header.dart';
+export 'src/widgets/table_horizontal_sync.dart';
