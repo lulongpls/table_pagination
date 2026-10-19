@@ -49,6 +49,7 @@ TableColumnConfig<T> textColumn<T>({
   AlignmentGeometry cellAlignment = Alignment.centerLeft,
   EdgeInsetsGeometry headerPadding = const EdgeInsets.symmetric(horizontal: 8),
   EdgeInsetsGeometry cellPadding = const EdgeInsets.symmetric(horizontal: 8),
+  bool fixed = false,
   TextStyle? style,
   TextOverflow overflow = TextOverflow.ellipsis,
   int? maxLines = 1,
@@ -68,6 +69,7 @@ TableColumnConfig<T> textColumn<T>({
     cellAlignment: cellAlignment,
     headerPadding: headerPadding,
     cellPadding: cellPadding,
+    fixed: fixed,
     cellBuilder: (item, _) {
       final value = valueGetter(item);
       return Text(
@@ -95,6 +97,7 @@ TableColumnConfig<T> widgetColumn<T>({
   EdgeInsetsGeometry headerPadding = const EdgeInsets.symmetric(horizontal: 8),
   EdgeInsetsGeometry cellPadding = const EdgeInsets.symmetric(horizontal: 8),
   TableColumnHeaderBuilder<T>? headerBuilder,
+  bool fixed = false,
 }) {
   return TableColumnConfig<T>(
     name: name,
@@ -111,6 +114,7 @@ TableColumnConfig<T> widgetColumn<T>({
     headerPadding: headerPadding,
     cellPadding: cellPadding,
     headerBuilder: headerBuilder,
+    fixed: fixed,
   );
 }
 

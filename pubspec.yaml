@@ -14,6 +14,7 @@ dependencies:
   flutter_advanced_table:
     path: flutter_advanced_table
   flutter_bloc: ^9.1.1
+  shared_preferences: ^2.5.3
 dev_dependencies:
   flutter_test:
     sdk: flutter

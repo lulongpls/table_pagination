@@ -12,6 +12,9 @@ import 'package:table_pagination/src/cubit/generic_table_state.dart';
 import 'package:table_pagination/src/data_source/generic_data_source.dart';
 import 'package:table_pagination/src/models/table_action.dart';
 import 'package:table_pagination/src/models/table_column_config.dart';
+import 'package:table_pagination/src/models/table_column_layout.dart';
+import 'package:table_pagination/src/models/table_column_settings.dart';
+import 'package:table_pagination/src/widgets/table_column_settings_panel.dart';
 import 'package:table_pagination/src/widgets/pagination_footer.dart';
 import 'package:table_pagination/src/widgets/frozen_columns_table.dart';
 import 'package:table_pagination/src/widgets/table_action_menu_item.dart';
@@ -88,6 +91,7 @@ class GenericTable<T> extends StatefulWidget {
     this.actionsColumnTitle,
     this.frozenColumnCount = 0,
     this.autoHeight = false,
+    this.columnSettings,
   }) : cubit = null,
        assert(frozenColumnCount >= 0);
 
@@ -129,6 +133,7 @@ class GenericTable<T> extends StatefulWidget {
     this.actionsColumnTitle,
     this.frozenColumnCount = 0,
     this.autoHeight = false,
+    this.columnSettings,
   }) : fetcher = null,
        mode = TableMode.pagination,
        sortMode = TableSortMode.online,
@@ -202,6 +207,11 @@ class GenericTable<T> extends StatefulWidget {
   /// horizontally.
   final int frozenColumnCount;
 
+  /// When set, a control fixed to the header's right edge opens a panel to
+  /// hide and reorder columns (the first [frozenColumnCount] columns stay
+  /// locked). The layout is persisted per column set.
+  final TableColumnSettings? columnSettings;
+
   /// Height follows the rows (no inner vertical scroll). Needs a parent with
   /// unbounded height (scroll view / min-size column). Takes precedence over
   /// [shrinkWrapRows] and [stickyFooter].
@@ -221,6 +231,9 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
   late bool _ownsCubit;
   late final ValueNotifier<bool> _isLoadingAll;
   late final ValueNotifier<bool> _isLoadingMore;
+  late List<TableColumnConfig<T>> _columns;
+  TableColumnLayout _layout = TableColumnLayout.defaults;
+  String? _layoutKey;
 
   @override
   void initState() {
@@ -229,10 +242,12 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
     _isLoadingAll = ValueNotifier(false);
     _isLoadingMore = ValueNotifier(false);
     _createCubit();
+    _columns = _resolveColumns();
     _dataSource = GenericDataSource<T>(
       items: _cubit.state.items,
-      columns: widget.columns,
+      columns: _columns,
     );
+    _syncLayoutKey();
   }
 
   @override
@@ -257,17 +272,75 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
         unawaited(_cubit.close());
       }
       _createCubit();
+      _columns = _resolveColumns();
       _dataSource = GenericDataSource<T>(
         items: _cubit.state.items,
-        columns: widget.columns,
+        columns: _columns,
       );
       _syncLoadingNotifiers(_cubit.state);
       return;
     }
 
-    if (oldWidget.columns != widget.columns) {
-      _dataSource.updateColumns(widget.columns);
-    }
+    _syncLayoutKey();
+    _columns = _resolveColumns();
+    _dataSource.updateColumns(_columns);
+  }
+
+  // ─── Column settings ───────────────────────────────────────────────────────
+
+  bool get _hasColumnSettings => widget.columnSettings != null;
+
+  List<TableColumnConfig<T>> _resolveColumns() {
+    if (!_hasColumnSettings) return widget.columns;
+    return _layout.resolve<T>(widget.columns, widget.frozenColumnCount);
+  }
+
+  Widget _settingsButton() {
+    return TableColumnSettingsButton<T>(
+      columns: widget.columns,
+      frozenCount: widget.frozenColumnCount,
+      layout: _layout,
+      settings: widget.columnSettings!,
+      onApply: _applyLayout,
+    );
+  }
+
+  void _syncLayoutKey() {
+    final settings = widget.columnSettings;
+    if (settings == null) return;
+    final key = tableColumnLayoutKey<T>(
+      widget.columns,
+      prefix: settings.storageKey,
+    );
+    if (key == _layoutKey) return;
+    _layoutKey = key;
+    unawaited(_loadLayout(settings, key));
+  }
+
+  Future<void> _loadLayout(TableColumnSettings settings, String key) async {
+    final layout = await settings.store.load(key);
+    if (!mounted || key != _layoutKey) return;
+    setState(() {
+      _layout = layout;
+      _columns = _resolveColumns();
+      _dataSource.updateColumns(_columns);
+    });
+  }
+
+  void _applyLayout(TableColumnLayout layout) {
+    final settings = widget.columnSettings;
+    final key = _layoutKey;
+    setState(() {
+      _layout = layout;
+      _columns = _resolveColumns();
+      _dataSource.updateColumns(_columns);
+    });
+    if (settings == null || key == null) return;
+    unawaited(
+      layout.isDefault
+          ? settings.store.clear(key)
+          : settings.store.save(key, layout),
+    );
   }
 
   @override
@@ -395,7 +468,7 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
         // it still provides horizontal scrolling while keeping the footer
         // outside the scrollable table body.
         final layoutSlotCount =
-            widget.columns.length +
+            _columns.length +
             1 +
             (_actionsEnabled ? 1 : 0) +
             (_hasActionColumnTitle ? 1 : 0);
@@ -404,11 +477,10 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
 
         return FrozenColumnsTable<T>(
           items: state.items,
-          columnCount: widget.columns.length,
+          columnCount: _columns.length,
           defaultColumnWidth: defaultWidth,
           columnWidths: [
-            for (final column in widget.columns)
-              column.resolveWidth(defaultWidth),
+            for (final column in _columns) column.resolveWidth(defaultWidth),
           ],
           frozenColumnCount: widget.frozenColumnCount,
           autoHeight: widget.autoHeight,
@@ -419,6 +491,8 @@ class _GenericTableState<T> extends State<GenericTable<T>> {
           actionIcon: widget.actionsMenuIcon,
           actionColumnWidth: widget.actionsColumnWidth,
           actionColumnTitle: widget.actionsColumnTitle,
+          pinnedHeaderTrailing: _hasColumnSettings ? _settingsButton() : null,
+          pinnedHeaderTrailingWidth: widget.columnSettings?.triggerWidth ?? 0,
           addSpacerToActions: widget.addSpacerToActions,
           onRowTap: widget.onRowTap,
           rowDecorationBuilder: _hasCustomRowDecoration

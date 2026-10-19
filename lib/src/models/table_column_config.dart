@@ -56,6 +56,7 @@ class TableColumnConfig<T> {
     this.cellAlignment = Alignment.centerLeft,
     this.headerPadding = const EdgeInsets.symmetric(horizontal: 8),
     this.cellPadding = const EdgeInsets.symmetric(horizontal: 8),
+    this.fixed = false,
   });
 
   /// Column identifier used by row cells and sort/filter code.
@@ -94,6 +95,11 @@ class TableColumnConfig<T> {
   final AlignmentGeometry cellAlignment;
   final EdgeInsetsGeometry headerPadding;
   final EdgeInsetsGeometry cellPadding;
+
+  /// Fixed columns (e.g. a row-actions column) stay at the end of the table:
+  /// they are not listed in the column settings and cannot be hidden or moved.
+  /// Columns with a blank [label] are treated the same way.
+  final bool fixed;
 
   String get effectiveSortField => sortField ?? name;
 

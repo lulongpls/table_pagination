@@ -43,6 +43,8 @@ class FrozenColumnsTable<T> extends StatefulWidget {
     required this.actionIcon,
     required this.actionColumnWidth,
     required this.actionColumnTitle,
+    this.pinnedHeaderTrailing,
+    this.pinnedHeaderTrailingWidth = 44,
     required this.addSpacerToActions,
     required this.onRowTap,
     required this.rowDecorationBuilder,
@@ -73,6 +75,11 @@ class FrozenColumnsTable<T> extends StatefulWidget {
   final Widget? actionIcon;
   final double actionColumnWidth;
   final String? actionColumnTitle;
+
+  /// Widget pinned to the right edge of the header, above the scrolling
+  /// cells (e.g. a settings icon), so it stays visible while scrolling.
+  final Widget? pinnedHeaderTrailing;
+  final double pinnedHeaderTrailingWidth;
   final bool addSpacerToActions;
   final TableRowTap<T>? onRowTap;
   final TableRowDecorationBuilder<T>? rowDecorationBuilder;
@@ -122,6 +129,15 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportWidth = constraints.maxWidth;
+        final pinnedTrailingWidth = widget.pinnedHeaderTrailing == null
+            ? 0.0
+            : widget.pinnedHeaderTrailingWidth
+                  .clamp(0.0, viewportWidth)
+                  .toDouble();
+        final scrollableViewportWidth = math.max(
+          0.0,
+          viewportWidth - pinnedTrailingWidth,
+        );
         final actionCount = _visibleActionCount;
         final defaultActionWidth = widget.defaultColumnWidth * .5;
         final columnsWidth = widget.columnWidths.fold<double>(
@@ -141,7 +157,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
             ? defaultActionWidth
             : widget.actionColumnWidth / actionCount;
         final contentWidth = math.max(
-          viewportWidth,
+          scrollableViewportWidth,
           columnsWidth + actionsWidth,
         );
         final frozenCount = widget.frozenColumnCount.clamp(
@@ -161,12 +177,13 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
           columnsWidth: columnsWidth,
           actionsWidth: actionsWidth,
           actionCount: actionCount,
+          pinnedTrailingWidth: pinnedTrailingWidth,
         );
 
         return TableScrollScope(
           offset: _horizontalOffset,
           contentWidth: contentWidth,
-          viewportWidth: viewportWidth,
+          viewportWidth: scrollableViewportWidth,
           child: _withFrozenShadow(
             frozenWidth: frozenWidth,
             child: Column(
@@ -199,6 +216,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
                                 viewportWidth: viewportWidth,
                                 contentWidth: contentWidth,
                                 frozenWidth: frozenWidth,
+                                pinnedTrailingWidth: pinnedTrailingWidth,
                                 frozenCount: frozenCount,
                                 columnCount: widget.columnCount,
                                 columnWidths: widget.columnWidths,
@@ -332,6 +350,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
     required double columnsWidth,
     required double actionsWidth,
     required int actionCount,
+    required double pinnedTrailingWidth,
   }) {
     final headerStyle =
         widget.headerTextStyle ?? Theme.of(context).textTheme.labelMedium!;
@@ -381,13 +400,22 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       ),
     );
 
-    return _FrozenHorizontalViewport(
+    final header = _FrozenHorizontalViewport(
       viewportWidth: viewportWidth,
       contentWidth: contentWidth,
       frozenWidth: frozenWidth,
+      fixedTrailingWidth: pinnedTrailingWidth,
       offset: _horizontalOffset,
       onPointerSignalIntent: _handlePointerSignalIntent,
       fixedChild: frozenCells,
+      fixedTrailingChild: widget.pinnedHeaderTrailing == null
+          ? null
+          : ColoredBox(
+              color:
+                  widget.headerDecoration?.color ??
+                  Theme.of(context).colorScheme.surface,
+              child: Center(child: widget.pinnedHeaderTrailing),
+            ),
       wrapper: (child) => DefaultTextStyle(
         style: headerStyle,
         child: Container(
@@ -398,6 +426,7 @@ class _FrozenColumnsTableState<T> extends State<FrozenColumnsTable<T>> {
       ),
       child: scrollingCells,
     );
+    return header;
   }
 
   int get _visibleActionCount {
@@ -428,6 +457,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
     required this.viewportWidth,
     required this.contentWidth,
     required this.frozenWidth,
+    required this.pinnedTrailingWidth,
     required this.frozenCount,
     required this.columnCount,
     required this.columnWidths,
@@ -452,6 +482,7 @@ class _FrozenDataRow<T> extends StatefulWidget {
   final double viewportWidth;
   final double contentWidth;
   final double frozenWidth;
+  final double pinnedTrailingWidth;
   final int frozenCount;
   final int columnCount;
   final List<double> columnWidths;
@@ -516,6 +547,7 @@ class _FrozenDataRowState<T> extends State<_FrozenDataRow<T>> {
       viewportWidth: widget.viewportWidth,
       contentWidth: widget.contentWidth,
       frozenWidth: widget.frozenWidth,
+      fixedTrailingWidth: widget.pinnedTrailingWidth,
       offset: widget.horizontalOffset,
       onPointerSignalIntent: widget.onPointerSignalIntent,
       controller: _scrollController,
@@ -670,10 +702,12 @@ class _FrozenHorizontalViewport extends StatefulWidget {
     required this.viewportWidth,
     required this.contentWidth,
     required this.frozenWidth,
+    this.fixedTrailingWidth = 0,
     required this.offset,
     required this.onPointerSignalIntent,
     required this.child,
     required this.fixedChild,
+    this.fixedTrailingChild,
     this.controller,
     this.wrapper,
   });
@@ -681,10 +715,12 @@ class _FrozenHorizontalViewport extends StatefulWidget {
   final double viewportWidth;
   final double contentWidth;
   final double frozenWidth;
+  final double fixedTrailingWidth;
   final ValueNotifier<double> offset;
   final ValueChanged<PointerScrollEvent> onPointerSignalIntent;
   final Widget child;
   final Widget fixedChild;
+  final Widget? fixedTrailingChild;
   final ScrollController? controller;
   final Widget Function(Widget child)? wrapper;
 
@@ -780,7 +816,10 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
     final scrolling = SizedBox(
       width: widget.viewportWidth,
       child: Padding(
-        padding: EdgeInsets.only(left: widget.frozenWidth),
+        padding: EdgeInsets.only(
+          left: widget.frozenWidth,
+          right: widget.fixedTrailingWidth,
+        ),
         // Desktop browsers: allow dragging the table with the mouse (the
         // default behavior only accepts touch/trackpad).
         child: ScrollConfiguration(
@@ -813,9 +852,11 @@ class _FrozenHorizontalViewportState extends State<_FrozenHorizontalViewport> {
     // frozen cell (tags, two lines...) never overflows.
     final viewport = _FrozenRowLayout(
       frozenWidth: widget.frozenWidth,
+      fixedTrailingWidth: widget.fixedTrailingWidth,
       children: [
         scrolling,
-        if (widget.frozenWidth > 0) ClipRect(child: widget.fixedChild),
+        ClipRect(child: widget.fixedChild),
+        widget.fixedTrailingChild ?? const SizedBox.shrink(),
       ],
     );
     final pointerAwareViewport = Listener(
@@ -853,16 +894,20 @@ class _PointerSignalAxisScrollPhysics extends ScrollPhysics {
   }
 }
 
-/// Lays out `[scrolling, frozen?]` on top of each other with the same height:
-/// the max of both natural heights (and at least the incoming min height).
+/// Lays out `[scrolling, frozen, trailing?]` with one shared row height.
 class _FrozenRowLayout extends MultiChildRenderObjectWidget {
-  const _FrozenRowLayout({required this.frozenWidth, required super.children});
+  const _FrozenRowLayout({
+    required this.frozenWidth,
+    required this.fixedTrailingWidth,
+    required super.children,
+  });
 
   final double frozenWidth;
+  final double fixedTrailingWidth;
 
   @override
   RenderObject createRenderObject(BuildContext context) {
-    return _RenderFrozenRow(frozenWidth: frozenWidth);
+    return _RenderFrozenRow(frozenWidth, fixedTrailingWidth);
   }
 
   @override
@@ -870,7 +915,9 @@ class _FrozenRowLayout extends MultiChildRenderObjectWidget {
     BuildContext context,
     covariant _RenderFrozenRow renderObject,
   ) {
-    renderObject.frozenWidth = frozenWidth;
+    renderObject
+      ..frozenWidth = frozenWidth
+      ..fixedTrailingWidth = fixedTrailingWidth;
   }
 }
 
@@ -880,15 +927,20 @@ class _RenderFrozenRow extends RenderBox
     with
         ContainerRenderObjectMixin<RenderBox, _FrozenRowParentData>,
         RenderBoxContainerDefaultsMixin<RenderBox, _FrozenRowParentData> {
-  _RenderFrozenRow({required double frozenWidth})
-    // ignore: prefer_initializing_formals
-    : _frozenWidth = frozenWidth;
+  _RenderFrozenRow(this._frozenWidth, this._fixedTrailingWidth);
 
   double _frozenWidth;
+  double _fixedTrailingWidth;
 
   set frozenWidth(double value) {
     if (_frozenWidth == value) return;
     _frozenWidth = value;
+    markNeedsLayout();
+  }
+
+  set fixedTrailingWidth(double value) {
+    if (_fixedTrailingWidth == value) return;
+    _fixedTrailingWidth = value;
     markNeedsLayout();
   }
 
@@ -904,6 +956,11 @@ class _RenderFrozenRow extends RenderBox
     return scrolling == null ? null : childAfter(scrolling);
   }
 
+  RenderBox? get _fixedTrailing {
+    final frozen = _frozen;
+    return frozen == null ? null : childAfter(frozen);
+  }
+
   @override
   void performLayout() {
     final scrolling = firstChild;
@@ -912,6 +969,7 @@ class _RenderFrozenRow extends RenderBox
       return;
     }
     final frozen = _frozen;
+    final fixedTrailing = _fixedTrailing;
     // Pass 1: natural heights (width is loose for the scrolling layer, as the
     // old Stack did, and exactly the frozen width for the frozen layer).
     scrolling.layout(
@@ -919,12 +977,18 @@ class _RenderFrozenRow extends RenderBox
       parentUsesSize: true,
     );
     var height = scrolling.size.height;
-    if (frozen != null) {
+    if (frozen != null && _frozenWidth > 0) {
       // Measure the frozen layer by intrinsic height, never with an unbounded
       // max height: cells may contain Expanded/Flexible children that need a
       // bounded height. If a cell does not support intrinsics, the scrolling
       // height is used (the previous behavior).
-      height = math.max(height, _frozenIntrinsicHeight(frozen));
+      height = math.max(height, _fixedIntrinsicHeight(frozen, _frozenWidth));
+    }
+    if (fixedTrailing != null && _fixedTrailingWidth > 0) {
+      height = math.max(
+        height,
+        _fixedIntrinsicHeight(fixedTrailing, _fixedTrailingWidth),
+      );
     }
     height = math.max(height, constraints.minHeight);
 
@@ -944,16 +1008,23 @@ class _RenderFrozenRow extends RenderBox
       BoxConstraints.tightFor(width: _frozenWidth, height: height),
       parentUsesSize: true,
     );
+    fixedTrailing?.layout(
+      BoxConstraints.tightFor(width: _fixedTrailingWidth, height: height),
+      parentUsesSize: true,
+    );
 
-    for (final child in <RenderBox?>[scrolling, frozen]) {
-      (child?.parentData as _FrozenRowParentData?)?.offset = Offset.zero;
-    }
     size = constraints.constrain(Size(scrolling.size.width, height));
+    (scrolling.parentData as _FrozenRowParentData).offset = Offset.zero;
+    (frozen?.parentData as _FrozenRowParentData?)?.offset = Offset.zero;
+    (fixedTrailing?.parentData as _FrozenRowParentData?)?.offset = Offset(
+      math.max(0, size.width - _fixedTrailingWidth),
+      0,
+    );
   }
 
-  double _frozenIntrinsicHeight(RenderBox frozen) {
+  double _fixedIntrinsicHeight(RenderBox child, double width) {
     try {
-      return frozen.getMaxIntrinsicHeight(_frozenWidth);
+      return child.getMaxIntrinsicHeight(width);
     } on Object {
       return 0;
     }
@@ -971,8 +1042,15 @@ class _RenderFrozenRow extends RenderBox
     );
     var height = scrollingSize.height;
     final frozen = _frozen;
-    if (frozen != null) {
-      height = math.max(height, _frozenIntrinsicHeight(frozen));
+    if (frozen != null && _frozenWidth > 0) {
+      height = math.max(height, _fixedIntrinsicHeight(frozen, _frozenWidth));
+    }
+    final fixedTrailing = _fixedTrailing;
+    if (fixedTrailing != null && _fixedTrailingWidth > 0) {
+      height = math.max(
+        height,
+        _fixedIntrinsicHeight(fixedTrailing, _fixedTrailingWidth),
+      );
     }
     return constraints.constrain(Size(scrollingSize.width, height));
   }
@@ -984,7 +1062,7 @@ class _RenderFrozenRow extends RenderBox
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    // Frozen layer is painted last, so it must be hit first.
+    // Fixed layers are painted last, so they must be hit first.
     return defaultHitTestChildren(result, position: position);
   }
 }

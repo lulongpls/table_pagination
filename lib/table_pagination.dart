@@ -6,6 +6,8 @@ export 'src/cubit/generic_table_cubit.dart';
 export 'src/cubit/generic_table_state.dart';
 export 'src/data_source/generic_data_source.dart';
 export 'src/models/table_column_config.dart';
+export 'src/models/table_column_layout.dart';
+export 'src/models/table_column_settings.dart';
 export 'src/models/table_action.dart';
 export 'src/utils/table_helpers.dart';
 export 'src/widgets/generic_table.dart';
